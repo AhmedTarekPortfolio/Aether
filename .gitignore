@@ -7,6 +7,10 @@ dist
 dist-ssr
 *.local
 
+# Diff files
+*.diff
+*.patch
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

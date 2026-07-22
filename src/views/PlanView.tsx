@@ -15,6 +15,24 @@ interface PlanViewProps {
   onAddSubject: (subject: Omit<Subject, 'id' | 'createdAt'>) => void;
 }
 
+function formatDueDate(dueDate?: number): string {
+  if (!dueDate) return 'No due date';
+
+  const msLeft = dueDate - Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  if (msLeft < 0) {
+    const daysLate = Math.round(Math.abs(msLeft) / dayMs);
+    return daysLate === 0 ? 'Overdue today' : `${daysLate}d overdue`;
+  }
+
+  const hoursLeft = msLeft / (60 * 60 * 1000);
+  if (hoursLeft < 24) return `Due in ${Math.max(1, Math.round(hoursLeft))}h`;
+
+  const daysLeft = Math.round(hoursLeft / 24);
+  return `Due in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
+}
+
 export const PlanView: React.FC<PlanViewProps> = ({
   tasks,
   subjects,
@@ -33,6 +51,9 @@ export const PlanView: React.FC<PlanViewProps> = ({
   const [subjectId, setSubjectId] = useState<string>('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [estimatedMinutes, setEstimatedMinutes] = useState<number>(45);
+  const [dueDate, setDueDate] = useState<string>(
+    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
 
   // Subject form state
   const [subName, setSubName] = useState('');
@@ -61,12 +82,13 @@ export const PlanView: React.FC<PlanViewProps> = ({
       estimatedMinutes: Number(estimatedMinutes) || 30,
       completedMinutes: 0,
       status: 'todo',
-      dueDate: Date.now() + 2 * 24 * 60 * 60 * 1000,
+      dueDate: dueDate ? new Date(`${dueDate}T23:59:59`).getTime() : undefined,
     });
 
     setTitle('');
     setDescription('');
     setSubjectId('');
+    setDueDate(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
     setIsTaskModalOpen(false);
   };
 
@@ -218,7 +240,7 @@ export const PlanView: React.FC<PlanViewProps> = ({
 
                       <span className="flex items-center gap-1">
                         <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
-                        Due in 2 days
+                        {formatDueDate(task.dueDate)}
                       </span>
                     </div>
                   </div>
@@ -312,16 +334,28 @@ export const PlanView: React.FC<PlanViewProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Target Duration (Minutes)</label>
-            <input
-              type="number"
-              min={10}
-              max={300}
-              value={estimatedMinutes}
-              onChange={(e) => setEstimatedMinutes(Number(e.target.value))}
-              className="w-full px-3.5 py-2 bg-[#0B1220] border border-white/10 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-[#4F7CFF]"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Target Duration (Minutes)</label>
+              <input
+                type="number"
+                min={10}
+                max={300}
+                value={estimatedMinutes}
+                onChange={(e) => setEstimatedMinutes(Number(e.target.value))}
+                className="w-full px-3.5 py-2 bg-[#0B1220] border border-white/10 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-[#4F7CFF]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-3.5 py-2 bg-[#0B1220] border border-white/10 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-[#4F7CFF]"
+              />
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">

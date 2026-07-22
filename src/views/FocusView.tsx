@@ -36,6 +36,15 @@ export const FocusView: React.FC<FocusViewProps> = ({
   const [distractionCount, setDistractionCount] = useState<number>(0);
   const [reflectionRating, setReflectionRating] = useState<number>(5);
 
+  // Stop ambient audio if the user navigates away from Focus while it's playing.
+  // soundService is a module-level singleton, so without this the noise node
+  // keeps looping in the background after this component unmounts.
+  useEffect(() => {
+    return () => {
+      soundService.stop();
+    };
+  }, []);
+
   // Sync target minutes when mode changes
   useEffect(() => {
     if (timerType === 'pomodoro') setTargetMinutes(25);
@@ -68,13 +77,24 @@ export const FocusView: React.FC<FocusViewProps> = ({
 
   const handleTimerComplete = () => {
     setIsRunning(false);
+
+    // Compute actual elapsed time rather than assuming the full target was reached.
+    // Stopwatch counts up, so timeLeftSeconds already IS the elapsed time.
+    // Countdown modes count down from targetMinutes*60, so elapsed = target - remaining.
+    const elapsedSeconds =
+      timerType === 'stopwatch' ? timeLeftSeconds : targetMinutes * 60 - timeLeftSeconds;
+    const actualDurationMinutes = Math.round(elapsedSeconds / 60);
+
+    // Guard against logging a session for an accidental instant "complete" click.
+    if (actualDurationMinutes < 1) return;
+
     soundService.playTimerCompletionBell();
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
 
     onLogFocusSession({
       taskId: selectedTaskId || undefined,
       subjectId: selectedSubjectId || undefined,
-      durationMinutes: targetMinutes,
+      durationMinutes: actualDurationMinutes,
       type: timerType,
       distractionCount,
       reflectionRating,
