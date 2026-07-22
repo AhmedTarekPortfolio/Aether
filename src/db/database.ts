@@ -1,26 +1,36 @@
 import Dexie, { Table } from 'dexie';
 import { 
+  User,
+  Settings,
   Subject, 
   Topic, 
   Task, 
   Note, 
   Flashcard, 
-  FocusSession, 
-  AIInteraction, 
-  NotificationItem, 
-  UserProfile 
+  Session, 
+  Goal,
+  AIConversation, 
+  Statistic,
+  AchievementDefinition,
+  UserAchievement,
+  NotificationItem 
 } from '../types';
 
 export class AetherDatabase extends Dexie {
+  users!: Table<User>;
+  settings!: Table<Settings>;
   subjects!: Table<Subject>;
   topics!: Table<Topic>;
   tasks!: Table<Task>;
   notes!: Table<Note>;
   flashcards!: Table<Flashcard>;
-  focusSessions!: Table<FocusSession>;
-  aiInteractions!: Table<AIInteraction>;
+  sessions!: Table<Session>;
+  goals!: Table<Goal>;
+  ai_conversations!: Table<AIConversation>;
+  statistics!: Table<Statistic>;
+  achievement_definitions!: Table<AchievementDefinition>;
+  user_achievements!: Table<UserAchievement>;
   notifications!: Table<NotificationItem>;
-  userProfile!: Table<UserProfile & { id: string }>;
 
   constructor() {
     super('AetherPhase1DB');
@@ -45,6 +55,134 @@ export class AetherDatabase extends Dexie {
       notifications: 'id, type, read, createdAt',
       userProfile: 'id',
     });
+
+    // Version 3 Migration (3NF Normalized 14-Table Architecture)
+    this.version(3).stores({
+      users: 'id, &email',
+      settings: 'id, &userId',
+      subjects: 'id, userId, name, confidenceRating',
+      topics: 'id, subjectId, title, masteryLevel',
+      tasks: 'id, userId, subjectId, priority, status, dueDate',
+      notes: 'id, userId, subjectId, topicId, title, updatedAt',
+      flashcards: 'id, userId, subjectId, topicId, nextReviewDate',
+      sessions: 'id, userId, subjectId, taskId, completedAt',
+      goals: 'id, userId, subjectId, status',
+      ai_conversations: 'id, userId, subjectId, mode, timestamp',
+      statistics: 'id, userId, [userId+metricKey+periodStart]',
+      achievement_definitions: 'id, &key',
+      user_achievements: 'id, userId, [userId+achievementId]',
+      notifications: 'id, userId, type, createdAt',
+      // Old dropped tables marked null
+      focusSessions: null,
+      aiInteractions: null,
+      userProfile: null,
+    }).upgrade(async (tx) => {
+      const now = Date.now();
+
+      // 1. Migrate userProfile -> users & settings
+      const oldProfiles = await tx.table('userProfile').toArray();
+      if (oldProfiles.length > 0) {
+        const p = oldProfiles[0];
+        await tx.table('users').add({
+          id: 'default_user',
+          name: p.name || 'Alex Rivera',
+          email: p.email || 'alex.rivera@university.edu',
+          academicLevel: p.academicLevel || 'B.S. Computer Science',
+          createdAt: now - 30 * 24 * 60 * 60 * 1000,
+          updatedAt: now,
+        });
+        await tx.table('settings').add({
+          id: 'default_settings',
+          userId: 'default_user',
+          theme: p.theme || 'dark',
+          soundEnabled: p.soundEnabled ?? true,
+          aiProvider: p.aiProvider || 'local',
+          notificationsEnabled: true,
+          studyGoalHoursWeekly: p.studyGoalHoursWeekly || 25,
+          updatedAt: now,
+        });
+      } else {
+        await tx.table('users').add({
+          id: 'default_user',
+          name: 'Alex Rivera',
+          email: 'alex.rivera@university.edu',
+          academicLevel: 'B.S. Computer Science',
+          createdAt: now,
+          updatedAt: now,
+        });
+        await tx.table('settings').add({
+          id: 'default_settings',
+          userId: 'default_user',
+          theme: 'dark',
+          soundEnabled: true,
+          aiProvider: 'local',
+          notificationsEnabled: true,
+          studyGoalHoursWeekly: 25,
+          updatedAt: now,
+        });
+      }
+
+      // 2. Backfill userId = 'default_user' on existing tables
+      await tx.table('subjects').toCollection().modify((s) => {
+        if (!s.userId) s.userId = 'default_user';
+      });
+      await tx.table('tasks').toCollection().modify((t) => {
+        if (!t.userId) t.userId = 'default_user';
+      });
+      await tx.table('flashcards').toCollection().modify((f) => {
+        if (!f.userId) f.userId = 'default_user';
+      });
+      await tx.table('notes').toCollection().modify((n) => {
+        if (!n.userId) n.userId = 'default_user';
+      });
+      await tx.table('notifications').toCollection().modify((n) => {
+        if (!n.userId) n.userId = 'default_user';
+      });
+
+      // 3. Migrate focusSessions -> sessions
+      const oldFocus = await tx.table('focusSessions').toArray();
+      for (const f of oldFocus) {
+        await tx.table('sessions').add({
+          id: f.id,
+          userId: 'default_user',
+          subjectId: f.subjectId || null,
+          taskId: f.taskId || null,
+          type: f.type || 'pomodoro',
+          durationMinutes: f.durationMinutes || 25,
+          distractionCount: f.distractionCount || 0,
+          reflectionRating: f.reflectionRating || 5,
+          notes: f.notes || '',
+          completedAt: f.completedAt || now,
+        });
+      }
+
+      // 4. Migrate aiInteractions -> ai_conversations
+      const oldAI = await tx.table('aiInteractions').toArray();
+      for (const a of oldAI) {
+        await tx.table('ai_conversations').add({
+          id: a.id,
+          userId: 'default_user',
+          subjectId: a.contextSubjectId || null,
+          taskId: null,
+          role: a.role || 'assistant',
+          mode: a.mode || 'tutor',
+          content: a.content || '',
+          timestamp: a.timestamp || now,
+          explanation: a.explanation,
+        });
+      }
+
+      // 5. Seed Achievement Definitions
+      const starterAchievements: AchievementDefinition[] = [
+        { id: 'ach_first_task', key: 'first_task_completed', title: 'First Steps', description: 'Complete your first study task', category: 'tasks', targetValue: 1, icon: 'CheckCircle2' },
+        { id: 'ach_focus_5', key: 'five_focus_sessions', title: 'Deep Work Pioneer', description: 'Log 5 completed focus sessions', category: 'focus', targetValue: 5, icon: 'Timer' },
+        { id: 'ach_mastery_100', key: 'topic_mastery_100', title: 'Subject Master', description: 'Reach 100% mastery on a topic', category: 'mastery', targetValue: 100, icon: 'Award' },
+        { id: 'ach_notes_3', key: 'create_three_notes', title: 'Scholar Note-taker', description: 'Create 3 rich study notes', category: 'notes', targetValue: 3, icon: 'FileText' },
+      ];
+      for (const ach of starterAchievements) {
+        await tx.table('achievement_definitions').add(ach);
+      }
+    });
   }
 }
 
@@ -52,28 +190,39 @@ export const db = new AetherDatabase();
 
 // Seed initial dataset if database is empty
 export async function seedInitialDataIfEmpty() {
-  const count = await db.subjects.count();
-  if (count > 0) return;
-
+  const userCount = await db.users.count();
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
 
-  // 1. Initial User Profile
-  await db.userProfile.put({
-    id: 'default_user',
-    name: 'Alex Rivera',
-    email: 'alex.rivera@university.edu',
-    academicLevel: 'B.S. Computer Science & AI (Year 3)',
-    studyGoalHoursWeekly: 25,
-    theme: 'dark',
-    soundEnabled: true,
-    aiProvider: 'local',
-  });
+  if (userCount === 0) {
+    await db.users.put({
+      id: 'default_user',
+      name: 'Alex Rivera',
+      email: 'alex.rivera@university.edu',
+      academicLevel: 'B.S. Computer Science & AI (Year 3)',
+      createdAt: now - 30 * dayMs,
+      updatedAt: now,
+    });
+    await db.settings.put({
+      id: 'default_settings',
+      userId: 'default_user',
+      theme: 'dark',
+      soundEnabled: true,
+      aiProvider: 'local',
+      notificationsEnabled: true,
+      studyGoalHoursWeekly: 25,
+      updatedAt: now,
+    });
+  }
 
-  // 2. Initial Subjects
+  const subjectCount = await db.subjects.count();
+  if (subjectCount > 0) return;
+
+  // 1. Initial Subjects
   const subjects: Subject[] = [
     {
       id: 'sub_cs301',
+      userId: 'default_user',
       name: 'Advanced Algorithms & Data Structures',
       code: 'CS 301',
       color: '#4F7CFF',
@@ -84,6 +233,7 @@ export async function seedInitialDataIfEmpty() {
     },
     {
       id: 'sub_phys202',
+      userId: 'default_user',
       name: 'Quantum Mechanics & Field Theory',
       code: 'PHYS 202',
       color: '#8B5CF6',
@@ -94,6 +244,7 @@ export async function seedInitialDataIfEmpty() {
     },
     {
       id: 'sub_math210',
+      userId: 'default_user',
       name: 'Linear Algebra & Optimization',
       code: 'MATH 210',
       color: '#2DD4BF',
@@ -104,6 +255,7 @@ export async function seedInitialDataIfEmpty() {
     },
     {
       id: 'sub_cog105',
+      userId: 'default_user',
       name: 'Cognitive Neuroscience & Learning',
       code: 'COGS 105',
       color: '#FBBF24',
@@ -115,7 +267,7 @@ export async function seedInitialDataIfEmpty() {
   ];
   await db.subjects.bulkAdd(subjects);
 
-  // 3. Initial Topics
+  // 2. Initial Topics
   const topics: Topic[] = [
     { id: 'top_dp', subjectId: 'sub_cs301', title: 'Dynamic Programming & Memoization', masteryLevel: 45, lastReviewedAt: now - 2 * dayMs },
     { id: 'top_graphs', subjectId: 'sub_cs301', title: 'Graph Traversal & Shortest Paths', masteryLevel: 65, lastReviewedAt: now - 4 * dayMs },
@@ -124,10 +276,11 @@ export async function seedInitialDataIfEmpty() {
   ];
   await db.topics.bulkAdd(topics);
 
-  // 4. Initial Tasks
+  // 3. Initial Tasks
   const tasks: Task[] = [
     {
       id: 'task_1',
+      userId: 'default_user',
       title: 'Complete CS 301 Dynamic Programming Problem Set #4',
       description: 'Implement Knapsack, Matrix Chain Multiplication, and Edit Distance in Python.',
       subjectId: 'sub_cs301',
@@ -140,6 +293,7 @@ export async function seedInitialDataIfEmpty() {
     },
     {
       id: 'task_2',
+      userId: 'default_user',
       title: 'Derive 3D Time-Dependent Schrödinger Wave Equation',
       description: 'Prepare step-by-step mathematical proof for Thursday recitation session.',
       subjectId: 'sub_phys202',
@@ -152,6 +306,7 @@ export async function seedInitialDataIfEmpty() {
     },
     {
       id: 'task_3',
+      userId: 'default_user',
       title: 'Review SVD Decomposition Applications in Image Compression',
       description: 'Read Chapter 7 in Strang textbook & implement mini-lab in Python.',
       subjectId: 'sub_math210',
@@ -166,10 +321,11 @@ export async function seedInitialDataIfEmpty() {
   ];
   await db.tasks.bulkAdd(tasks);
 
-  // 5. Initial Notes
+  // 4. Initial Notes
   const notes: Note[] = [
     {
       id: 'note_dp',
+      userId: 'default_user',
       subjectId: 'sub_cs301',
       topicId: 'top_dp',
       title: 'Mastering Dynamic Programming Patterns',
@@ -199,6 +355,7 @@ def fib_memo(n, memo={}):
     },
     {
       id: 'note_wave',
+      userId: 'default_user',
       subjectId: 'sub_phys202',
       topicId: 'top_wave',
       title: 'Quantum Wave Mechanics Summary',
@@ -218,10 +375,11 @@ Where:
   ];
   await db.notes.bulkAdd(notes);
 
-  // 6. Initial Focus Sessions
-  const focusSessions: FocusSession[] = [
+  // 5. Initial Sessions
+  const sessions: Session[] = [
     {
       id: 'focus_1',
+      userId: 'default_user',
       taskId: 'task_3',
       subjectId: 'sub_math210',
       durationMinutes: 45,
@@ -233,6 +391,7 @@ Where:
     },
     {
       id: 'focus_2',
+      userId: 'default_user',
       taskId: 'task_1',
       subjectId: 'sub_cs301',
       durationMinutes: 30,
@@ -243,24 +402,26 @@ Where:
       notes: 'Implemented Edit Distance DP table.',
     },
   ];
-  await db.focusSessions.bulkAdd(focusSessions);
+  await db.sessions.bulkAdd(sessions);
 
-  // 7. Initial AI Chats
-  const aiChats: AIInteraction[] = [
+  // 6. Initial AI Conversations
+  const aiChats: AIConversation[] = [
     {
       id: 'ai_1',
+      userId: 'default_user',
       role: 'assistant',
       content: "Hello Alex! I've analyzed your schedule. You have a Quantum Physics exam derivation due tomorrow and a Dynamic Programming problem set in 2 days. Would you like me to generate a 5-question practice quiz or explain Schrödinger equation wave derivations?",
       mode: 'tutor',
       timestamp: now - 10 * 60 * 1000,
     },
   ];
-  await db.aiInteractions.bulkAdd(aiChats);
+  await db.ai_conversations.bulkAdd(aiChats);
 
-  // 8. Initial Notifications
+  // 7. Initial Notifications
   const notifications: NotificationItem[] = [
     {
       id: 'notif_1',
+      userId: 'default_user',
       type: 'deadline',
       title: 'Upcoming Urgent Deadline',
       message: 'Derive 3D Time-Dependent Schrödinger Wave Equation is due in 24 hours!',
@@ -270,6 +431,7 @@ Where:
     },
     {
       id: 'notif_2',
+      userId: 'default_user',
       type: 'confidence',
       title: 'Low Subject Confidence Warning',
       message: 'Your Quantum Mechanics confidence rating is currently at 42%. Practice quiz recommended.',
@@ -279,4 +441,16 @@ Where:
     },
   ];
   await db.notifications.bulkAdd(notifications);
+
+  // 8. Initial Achievement Definitions
+  const achDefs: AchievementDefinition[] = [
+    { id: 'ach_first_task', key: 'first_task_completed', title: 'First Steps', description: 'Complete your first study task', category: 'tasks', targetValue: 1, icon: 'CheckCircle2' },
+    { id: 'ach_focus_5', key: 'five_focus_sessions', title: 'Deep Work Pioneer', description: 'Log 5 completed focus sessions', category: 'focus', targetValue: 5, icon: 'Timer' },
+    { id: 'ach_mastery_100', key: 'topic_mastery_100', title: 'Subject Master', description: 'Reach 100% mastery on a topic', category: 'mastery', targetValue: 100, icon: 'Award' },
+    { id: 'ach_notes_3', key: 'create_three_notes', title: 'Scholar Note-taker', description: 'Create 3 rich study notes', category: 'notes', targetValue: 3, icon: 'FileText' },
+  ];
+  const existingAch = await db.achievement_definitions.count();
+  if (existingAch === 0) {
+    await db.achievement_definitions.bulkAdd(achDefs);
+  }
 }

@@ -39,13 +39,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleExportData = async () => {
     const exportData = {
+      users: await db.users.toArray(),
+      settings: await db.settings.toArray(),
       subjects: await db.subjects.toArray(),
       topics: await db.topics.toArray(),
       tasks: await db.tasks.toArray(),
       notes: await db.notes.toArray(),
       flashcards: await db.flashcards.toArray(),
-      focusSessions: await db.focusSessions.toArray(),
-      userProfile: await db.userProfile.toArray(),
+      sessions: await db.sessions.toArray(),
       exportedAt: new Date().toISOString(),
     };
 
