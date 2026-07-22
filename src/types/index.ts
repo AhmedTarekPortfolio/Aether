@@ -107,7 +107,6 @@ export interface UserProfile {
   theme: 'dark' | 'light';
   soundEnabled: boolean;
   aiProvider?: 'local' | 'openai' | 'gemini' | 'anthropic';
-  apiKey?: string;
 }
 
 export interface AIInteraction {

@@ -151,10 +151,9 @@ export function useAetherStore() {
   };
 
   const markAllNotificationsAsRead = async () => {
-    const unread = await db.notifications.where('read').equals(0).toArray();
-    for (const n of unread) {
-      await db.notifications.update(n.id, { read: true });
-    }
+    const all = await db.notifications.toArray();
+    const unread = all.filter((n) => !n.read);
+    await Promise.all(unread.map((n) => db.notifications.update(n.id, { read: true })));
   };
 
   // Profile Updates
