@@ -45,25 +45,25 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             <motion.div
               key={toast.id}
               {...MOTION_PRESETS.toast}
-              className="pointer-events-auto p-4 bg-[#111B2E] border border-white/15 rounded-2xl shadow-2xl flex items-start gap-3 text-slate-100"
+              className="pointer-events-auto p-4 bg-[var(--bg-secondary)] border border-[var(--border-glass-hover)] rounded-2xl shadow-2xl flex items-start gap-3 text-[var(--text-primary)]"
             >
               <div className="mt-0.5 shrink-0">
-                {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-[#2DD4BF]" />}
-                {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400" />}
-                {toast.type === 'info' && <Info className="w-5 h-5 text-[#4F7CFF]" />}
-                {toast.type === 'warning' && <AlertTriangle className="w-5 h-5 text-[#FBBF24]" />}
+                {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-[var(--accent-emerald)]" />}
+                {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-[var(--accent-rose)]" />}
+                {toast.type === 'info' && <Info className="w-5 h-5 text-[var(--accent-blue)]" />}
+                {toast.type === 'warning' && <AlertTriangle className="w-5 h-5 text-[var(--accent-amber)]" />}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold">{toast.title}</div>
                 {toast.description && (
-                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{toast.description}</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-0.5 leading-relaxed">{toast.description}</p>
                 )}
               </div>
 
               <button
                 onClick={() => removeToast(toast.id)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors shrink-0"
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--border-glass)] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none"
               >
                 <X className="w-4 h-4" />
               </button>

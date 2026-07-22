@@ -51,7 +51,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
             role="tooltip"
-            className={`absolute z-50 px-2.5 py-1 text-xs font-medium text-slate-100 bg-[#111B2E] border border-white/15 rounded-lg shadow-xl whitespace-nowrap pointer-events-none ${positionClasses[position]}`}
+            className={`absolute z-50 px-2.5 py-1 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border-glass-hover)] rounded-lg shadow-xl whitespace-nowrap pointer-events-none ${positionClasses[position]}`}
           >
             {content}
           </motion.div>

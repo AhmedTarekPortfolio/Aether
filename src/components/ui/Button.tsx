@@ -17,7 +17,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] select-none focus-visible:ring-2 focus-visible:ring-[#4F7CFF] focus-visible:outline-none';
+    'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] select-none focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none';
 
   const sizeStyles = {
     sm: 'px-3 py-1.5 text-xs gap-1.5',
@@ -27,18 +27,19 @@ export const Button: React.FC<ButtonProps> = ({
 
   const variantStyles = {
     primary:
-      'bg-[#4F7CFF] text-white hover:bg-[#3B66E6] shadow-lg shadow-[#4F7CFF]/20 border border-blue-400/30',
+      'bg-[var(--accent-blue)] text-white hover:opacity-90 shadow-lg shadow-[var(--accent-blue)]/20 border border-[var(--accent-blue)]/30',
     secondary:
-      'bg-[#111B2E] text-slate-200 hover:bg-[#1B2842] border border-white/10 hover:border-white/20 dark:bg-[#111B2E] dark:text-slate-200 dark:hover:bg-[#1B2842]',
-    ghost: 'text-slate-400 hover:text-slate-100 hover:bg-white/5 dark:hover:bg-white/5',
+      'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-glass)] hover:border-[var(--border-glass-hover)]',
+    ghost:
+      'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-glass)]',
     emerald:
-      'bg-[#2DD4BF] text-slate-950 hover:bg-[#26bba8] shadow-lg shadow-[#2DD4BF]/20 font-semibold',
+      'bg-[var(--accent-emerald)] text-[var(--text-inverted)] hover:opacity-90 shadow-lg shadow-[var(--accent-emerald)]/20 font-semibold',
     purple:
-      'bg-[#8B5CF6] text-white hover:bg-[#7c4dff] shadow-lg shadow-[#8B5CF6]/20 border border-purple-400/30',
+      'bg-[var(--accent-purple)] text-white hover:opacity-90 shadow-lg shadow-[var(--accent-purple)]/20 border border-[var(--accent-purple)]/30',
     amber:
-      'bg-[#FBBF24] text-slate-950 hover:bg-[#e5ac10] shadow-lg shadow-[#FBBF24]/20 font-semibold',
+      'bg-[var(--accent-amber)] text-[var(--text-inverted)] hover:opacity-90 shadow-lg shadow-[var(--accent-amber)]/20 font-semibold',
     danger:
-      'bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30',
+      'bg-[var(--accent-rose)]/20 text-[var(--accent-rose)] border border-[var(--accent-rose)]/30 hover:bg-[var(--accent-rose)]/30',
   };
 
   return (

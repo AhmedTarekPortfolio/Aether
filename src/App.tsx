@@ -36,7 +36,7 @@ export function AppContent() {
   const totalFocusMinutesToday = store.focusSessions.reduce((acc, s) => acc + s.durationMinutes, 0);
 
   return (
-    <div className="flex min-h-screen bg-[#0B1220] text-slate-100 font-sans transition-colors duration-200">
+    <div className="flex min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans transition-colors duration-200">
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={store.activeTab}

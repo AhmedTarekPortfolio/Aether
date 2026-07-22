@@ -48,7 +48,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={{ duration: 0.15 }}
-            className={`absolute z-50 mt-2 w-48 bg-[#111B2E] border border-white/10 rounded-xl shadow-2xl overflow-hidden p-1 ${
+            className={`absolute z-50 mt-2 w-48 bg-[var(--bg-secondary)] border border-[var(--border-glass)] rounded-xl shadow-2xl overflow-hidden p-1 ${
               align === 'right' ? 'right-0' : 'left-0'
             }`}
           >
@@ -59,10 +59,10 @@ export const Dropdown: React.FC<DropdownProps> = ({
                   option.action();
                   setIsOpen(false);
                 }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left cursor-pointer ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none ${
                   option.destructive
-                    ? 'text-rose-400 hover:bg-rose-500/10'
-                    : 'text-slate-200 hover:text-white hover:bg-white/5'
+                    ? 'text-[var(--accent-rose)] hover:bg-[var(--accent-rose)]/10'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-glass)]'
                 }`}
               >
                 {option.icon && <span className="shrink-0">{option.icon}</span>}

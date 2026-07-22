@@ -33,26 +33,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const content = (
-    <aside className="w-64 shrink-0 bg-[#0B1220] border-r border-white/10 flex flex-col h-screen select-none sticky top-0 dark:bg-[#0B1220] dark:text-slate-100">
+    <aside className="w-64 shrink-0 bg-[var(--bg-primary)] text-[var(--text-primary)] border-r border-[var(--border-glass)] flex flex-col h-screen select-none sticky top-0">
       {/* Brand Header */}
-      <div className="p-6 pb-4 flex items-center justify-between border-b border-white/5">
+      <div className="p-6 pb-4 flex items-center justify-between border-b border-[var(--border-glass)]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4F7CFF] via-[#8B5CF6] to-[#2DD4BF] p-0.5 shadow-lg shadow-[#4F7CFF]/20">
-            <div className="w-full h-full bg-[#0B1220] rounded-[10px] flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-[#4F7CFF]" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent-blue)] via-[var(--accent-purple)] to-[var(--accent-emerald)] p-0.5 shadow-lg shadow-[var(--accent-blue)]/20">
+            <div className="w-full h-full bg-[var(--bg-primary)] rounded-[10px] flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-[var(--accent-blue)]" />
             </div>
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-white font-sans flex items-center gap-1.5">
+            <h1 className="text-lg font-bold tracking-tight text-[var(--text-primary)] font-sans flex items-center gap-1.5">
               Aether
-              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-[#4F7CFF]/20 text-[#4F7CFF] rounded border border-[#4F7CFF]/30">v1.0</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-[var(--accent-blue)]/20 text-[var(--accent-blue)] rounded border border-[var(--accent-blue)]/30">v1.0</span>
             </h1>
-            <p className="text-[11px] text-slate-400 font-medium">Learn Smarter. Achieve More.</p>
+            <p className="text-[11px] text-[var(--text-secondary)] font-medium">Learn Smarter. Achieve More.</p>
           </div>
         </div>
 
         {onCloseMobile && (
-          <button onClick={onCloseMobile} className="md:hidden p-1 text-slate-400 hover:text-white">
+          <button onClick={onCloseMobile} className="md:hidden p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
             <X className="w-5 h-5" />
           </button>
         )}
@@ -62,13 +62,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="px-4 py-3">
         <button
           onClick={onOpenCommandPalette}
-          className="w-full flex items-center justify-between px-3 py-2 bg-[#111B2E] border border-white/10 hover:border-white/20 rounded-xl text-slate-400 hover:text-slate-200 transition-all text-xs cursor-pointer group focus-visible:ring-2 focus-visible:ring-[#4F7CFF] focus-visible:outline-none"
+          className="w-full flex items-center justify-between px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-glass)] hover:border-[var(--border-glass-hover)] rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-xs cursor-pointer group focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none"
         >
           <div className="flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-[#FBBF24] group-hover:scale-110 transition-transform" />
+            <Zap className="w-3.5 h-3.5 text-[var(--accent-amber)] group-hover:scale-110 transition-transform" />
             <span>Search or command...</span>
           </div>
-          <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-white/5 text-slate-400 border border-white/10 rounded">
+          <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-[var(--border-glass)] text-[var(--text-secondary)] border border-[var(--border-glass)] rounded">
             ⌘K
           </kbd>
         </button>
@@ -85,20 +85,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectTab(item.id);
                 if (onCloseMobile) onCloseMobile();
               }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-[#4F7CFF] focus-visible:outline-none ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none ${
                 isActive
-                  ? 'bg-gradient-to-r from-[#4F7CFF]/20 to-[#8B5CF6]/10 text-white border border-[#4F7CFF]/30 shadow-md shadow-[#4F7CFF]/10'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-white/5'
+                  ? 'bg-gradient-to-r from-[var(--accent-blue)]/20 to-[var(--accent-purple)]/10 text-[var(--text-primary)] border border-[var(--accent-blue)]/30 shadow-md shadow-[var(--accent-blue)]/10'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-glass)]'
               }`}
             >
               <div className="flex items-center gap-3">
-                <span className={isActive ? 'text-[#4F7CFF]' : 'text-slate-400'}>
+                <span className={isActive ? 'text-[var(--accent-blue)]' : 'text-[var(--text-secondary)]'}>
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
               </div>
               {item.badge && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-slate-400">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--border-glass)] text-[var(--text-secondary)]">
                   {item.badge}
                 </span>
               )}
@@ -108,24 +108,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Theme Toggle & Offline Status Footer */}
-      <div className="p-4 border-t border-white/5 bg-[#0B1220] space-y-2">
+      <div className="p-4 border-t border-[var(--border-glass)] bg-[var(--bg-primary)] space-y-2">
         <button
           onClick={onToggleTheme}
-          className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[#111B2E] border border-white/10 hover:border-white/20 text-xs text-slate-300 transition-all cursor-pointer"
+          className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-glass)] hover:border-[var(--border-glass-hover)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none"
         >
           <span className="flex items-center gap-2">
-            {isLight ? <Sun className="w-4 h-4 text-[#FBBF24]" /> : <Moon className="w-4 h-4 text-[#8B5CF6]" />}
+            {isLight ? <Sun className="w-4 h-4 text-[var(--accent-amber)]" /> : <Moon className="w-4 h-4 text-[var(--accent-purple)]" />}
             <span>{isLight ? 'Light Theme' : 'Dark Theme'}</span>
           </span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400">Switch</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--border-glass)] text-[var(--text-secondary)]">Switch</span>
         </button>
 
-        <div className="p-3 rounded-xl bg-[#111B2E] border border-white/5 flex items-center justify-between text-xs">
+        <div className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-glass)] flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#2DD4BF] animate-pulse" />
-            <span className="text-slate-300 font-medium">Local-First Ready</span>
+            <div className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
+            <span className="text-[var(--text-secondary)] font-medium">Local-First Ready</span>
           </div>
-          <Wifi className="w-3.5 h-3.5 text-[#2DD4BF]" />
+          <Wifi className="w-3.5 h-3.5 text-[var(--accent-emerald)]" />
         </div>
       </div>
     </aside>

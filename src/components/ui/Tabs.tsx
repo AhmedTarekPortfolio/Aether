@@ -32,7 +32,7 @@ export const Tabs: React.FC<TabsProps> = ({
       className={twMerge(
         clsx(
           'flex items-center gap-1.5',
-          variant === 'pills' ? 'p-1 bg-[#111B2E] border border-white/10 rounded-2xl' : 'border-b border-white/10 pb-0.5',
+          variant === 'pills' ? 'p-1 bg-[var(--bg-secondary)] border border-[var(--border-glass)] rounded-2xl' : 'border-b border-[var(--border-glass)] pb-0.5',
           className
         )
       )}
@@ -46,12 +46,12 @@ export const Tabs: React.FC<TabsProps> = ({
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={clsx(
-              'inline-flex items-center gap-2 font-medium transition-all duration-200 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#4F7CFF] focus-visible:outline-none select-none',
+              'inline-flex items-center gap-2 font-medium transition-all duration-200 cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none select-none',
               size === 'sm' ? 'px-3 py-1.5 text-xs rounded-xl' : 'px-4 py-2 text-sm rounded-xl',
-              variant === 'pills' && isActive && 'bg-[#4F7CFF] text-white shadow-md shadow-[#4F7CFF]/20',
-              variant === 'pills' && !isActive && 'text-slate-400 hover:text-slate-200 hover:bg-white/5',
-              variant === 'underline' && isActive && 'text-[#4F7CFF] border-b-2 border-[#4F7CFF] rounded-none pb-2 font-semibold',
-              variant === 'underline' && !isActive && 'text-slate-400 hover:text-slate-200 pb-2'
+              variant === 'pills' && isActive && 'bg-[var(--accent-blue)] text-white shadow-md shadow-[var(--accent-blue)]/20',
+              variant === 'pills' && !isActive && 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-glass)]',
+              variant === 'underline' && isActive && 'text-[var(--accent-blue)] border-b-2 border-[var(--accent-blue)] rounded-none pb-2 font-semibold',
+              variant === 'underline' && !isActive && 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] pb-2'
             )}
           >
             {tab.icon && <span className="shrink-0">{tab.icon}</span>}
@@ -60,7 +60,7 @@ export const Tabs: React.FC<TabsProps> = ({
               <span
                 className={clsx(
                   'px-1.5 py-0.2 text-[10px] font-mono rounded-full',
-                  isActive ? 'bg-white/20 text-white' : 'bg-white/5 text-slate-400'
+                  isActive ? 'bg-white/20 text-white' : 'bg-[var(--border-glass)] text-[var(--text-secondary)]'
                 )}
               >
                 {tab.badge}

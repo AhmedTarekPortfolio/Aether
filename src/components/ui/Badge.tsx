@@ -16,12 +16,12 @@ export const Badge: React.FC<BadgeProps> = ({
   className,
 }) => {
   const variantStyles = {
-    blue: 'bg-[#4F7CFF]/15 text-[#4F7CFF] border-[#4F7CFF]/30',
-    emerald: 'bg-[#2DD4BF]/15 text-[#2DD4BF] border-[#2DD4BF]/30',
-    purple: 'bg-[#8B5CF6]/15 text-[#8B5CF6] border-[#8B5CF6]/30',
-    amber: 'bg-[#FBBF24]/15 text-[#FBBF24] border-[#FBBF24]/30',
-    rose: 'bg-[#F43F5E]/15 text-[#F43F5E] border-[#F43F5E]/30',
-    gray: 'bg-slate-800/60 text-slate-300 border-slate-700/50',
+    blue: 'bg-[var(--accent-blue)]/15 text-[var(--accent-blue)] border-[var(--accent-blue)]/30',
+    emerald: 'bg-[var(--accent-emerald)]/15 text-[var(--accent-emerald)] border-[var(--accent-emerald)]/30',
+    purple: 'bg-[var(--accent-purple)]/15 text-[var(--accent-purple)] border-[var(--accent-purple)]/30',
+    amber: 'bg-[var(--accent-amber)]/15 text-[var(--accent-amber)] border-[var(--accent-amber)]/30',
+    rose: 'bg-[var(--accent-rose)]/15 text-[var(--accent-rose)] border-[var(--accent-rose)]/30',
+    gray: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-glass)]',
   };
 
   const sizeStyles = {

@@ -19,7 +19,7 @@ export const Card: React.FC<CardProps> = ({
     blue: 'glow-blue',
     emerald: 'glow-emerald',
     purple: 'glow-purple',
-    amber: 'box-shadow: 0 0 25px -5px rgba(251, 191, 36, 0.4)',
+    amber: 'glow-amber',
   };
 
   return (
