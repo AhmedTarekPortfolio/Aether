@@ -65,6 +65,6 @@ export interface UserProfile {
   name: string;
   academicLevel: string;
   studyGoalHoursWeekly: number;
-  theme: 'dark';
+  theme: 'dark' | 'light';
   soundEnabled: boolean;
 }
