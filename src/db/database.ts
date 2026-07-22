@@ -23,8 +23,18 @@ export class AetherDatabase extends Dexie {
   userProfile!: Table<UserProfile & { id: string }>;
 
   constructor() {
-    super('AetherPhase3DB');
+    super('AetherPhase1DB');
+
+    // Original Phase 1 Schema (4 tables)
     this.version(1).stores({
+      subjects: 'id, name, confidenceRating',
+      tasks: 'id, subjectId, priority, status, dueDate',
+      focusSessions: 'id, subjectId, taskId, completedAt, durationMinutes',
+      userProfile: 'id',
+    });
+
+    // Version 2 Migration (Extends schema with 5 new tables)
+    this.version(2).stores({
       subjects: 'id, name, confidenceRating',
       topics: 'id, subjectId, title, masteryLevel',
       tasks: 'id, subjectId, priority, status, dueDate',

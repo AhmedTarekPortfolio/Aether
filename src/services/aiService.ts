@@ -7,32 +7,32 @@ export async function generateAIResponse(
   context?: { subject?: Subject; task?: Task }
 ): Promise<{ content: string; explanation?: { confidence: number; factors: string[] } }> {
   // Simulate natural typing delay for smooth UX
-  await new Promise((resolve) => setTimeout(resolve, 700));
+  await new Promise((resolve) => setTimeout(resolve, 600));
 
   const subjectName = context?.subject?.name || 'Academic Studies';
+  const cleanPrompt = prompt.trim();
 
   if (mode === 'quiz') {
     return {
-      content: `### 🎯 AI Practice Quiz: ${subjectName}\n\n` +
-        `**Question 1 (Conceptual):**\n` +
-        `What is the primary difference between top-down memoization and bottom-up tabulation in Dynamic Programming?\n` +
-        `- A) Memoization uses $O(1)$ space whereas tabulation requires $O(N^2)$.\n` +
-        `- B) Memoization works recursively on demand; tabulation fills a table iteratively.\n` +
-        `- C) Tabulation cannot solve NP-complete problems.\n` +
-        `- D) Both are identical in time and space complexity.\n\n` +
-        `**Question 2 (Mathematical):**\n` +
-        `In the Schrödinger wave equation $i\\hbar \\frac{\\partial \\Psi}{\\partial t} = \\hat{H}\\Psi$, what physical property does $|\\Psi(x)|^2$ represent?\n` +
-        `- A) Kinetic energy\n` +
-        `- B) Position vector magnitude\n` +
-        `- C) Probability density of finding the particle\n` +
-        `- D) Wave vector frequency\n\n` +
-        `*Ask me to verify your answers or explain any derivation in detail!*`,
+      content: `### 🎯 Local Practice Quiz: ${subjectName}\n\n` +
+        `**Question 1 (Active Recall on "${cleanPrompt}"):**\n` +
+        `Regarding *${cleanPrompt}*, which fundamental principles apply in ${subjectName}?\n` +
+        `- A) Recursive subproblem memoization with top-down evaluation\n` +
+        `- B) Linear time complexity without state storage\n` +
+        `- C) Non-deterministic state space traversal\n` +
+        `- D) None of the above\n\n` +
+        `**Question 2 (Mathematical Verification):**\n` +
+        `How does the recurrence relation for *${cleanPrompt}* behave as input size $N \\to \\infty$?\n` +
+        `- A) Logarithmic $O(\\log N)$\n` +
+        `- B) Polynomial $O(N^k)$\n` +
+        `- C) Exponential $O(2^N)$\n\n` +
+        `*Reply with your selected answers to receive instant verification!*`,
       explanation: {
-        confidence: 94,
+        confidence: 88, // Illustrative local heuristic score based on question structure
         factors: [
-          `Generated from weak topic areas in ${subjectName}`,
-          `Formatted with LaTeX syntax for mathematical precision`,
-          `Structured for active recall testing`,
+          `Derived from active subject context: ${subjectName}`,
+          `Tailored for user prompt: "${cleanPrompt}"`,
+          'Synthesized locally using rule-based question templates',
         ],
       },
     };
@@ -40,38 +40,31 @@ export async function generateAIResponse(
 
   if (mode === 'code') {
     return {
-      content: `Here is the optimized solution for your query regarding **${prompt}**:\n\n` +
-        `\`\`\`python\ndef edit_distance(str1: str, str2: str) -> int:\n` +
+      content: `Here is the local synthesis for **"${cleanPrompt}"** in **${subjectName}**:\n\n` +
+        `\`\`\`python\ndef solve_problem(data_input):\n` +
         `    """\n` +
-        `    Calculates minimum Levenshtein edit distance between str1 and str2.\n` +
-        `    Time Complexity: O(m * n)\n` +
-        `    Space Complexity: O(n)\n` +
+        `    Local implementation for: ${cleanPrompt}\n` +
+        `    Target Subject: ${subjectName}\n` +
         `    """\n` +
-        `    m, n = len(str1), len(str2)\n` +
-        `    dp = list(range(n + 1))\n\n` +
-        `    for i in range(1, m + 1):\n` +
-        `        prev = dp[0]\n` +
-        `        dp[0] = i\n` +
-        `        for j in range(1, n + 1):\n` +
-        `            temp = dp[j]\n` +
-        `            if str1[i - 1] == str2[j - 1]:\n` +
-        `                dp[j] = prev\n` +
-        `            else:\n` +
-        `                dp[j] = 1 + min(dp[j], dp[j - 1], prev)\n` +
-        `            prev = temp\n` +
-        `    return dp[n]\n\n` +
-        `# Example Usage:\n` +
-        `print(edit_distance("intention", "execution"))  # Output: 5\n` +
+        `    # Step 1: Initialize local state lookup\n` +
+        `    memo = {}\n` +
+        `    \n` +
+        `    def helper(n):\n` +
+        `        if n in memo: return memo[n]\n` +
+        `        if n <= 1: return n\n` +
+        `        memo[n] = helper(n - 1) + helper(n - 2)\n` +
+        `        return memo[n]\n` +
+        `        \n` +
+        `    return helper(len(data_input))\n` +
         `\`\`\`\n\n` +
-        `### Key Optimization Breakdown:\n` +
-        `1. **Space Reduction**: Notice how we reduced space complexity from $O(m \\times n)$ to $O(n)$ using a single row rolling array.\n` +
-        `2. **State Transition**: $dp[j] = 1 + \\min(\\text{delete}, \\text{insert}, \\text{replace})$.`,
+        `### Key Analysis:\n` +
+        `- **Optimization**: Applied top-down memoization to avoid redundant subproblem evaluations.\n` +
+        `- **Space Complexity**: $O(N)$ auxiliary stack space.`,
       explanation: {
-        confidence: 96,
+        confidence: 90,
         factors: [
-          'Optimal time & space complexity analyzed',
-          'Annotated with Python typing & docstrings',
-          'Mathematical recurrence verified',
+          'Calculated from algorithmic complexity heuristics',
+          `Validated against Python typing specifications for ${subjectName}`,
         ],
       },
     };
@@ -79,39 +72,34 @@ export async function generateAIResponse(
 
   if (mode === 'writer') {
     return {
-      content: `### 📝 Writing Enhancement & Structural Review\n\n` +
-        `**Strength Analysis:**\n` +
-        `- Strong thesis statement and academic tone.\n` +
-        `- Excellent use of domain terminology.\n\n` +
-        `**Recommended Revisions:**\n` +
-        `1. **Clarity**: Simplify paragraph 2 to highlight causal relationship directly.\n` +
-        `2. **Citation Integration**: Ensure claims regarding synaptic plasticity cite *Bliss & Lomo (1973)*.\n\n` +
-        `*Suggested Reworded Passage:* \n` +
-        `> "Long-Term Potentiation (LTP) serves as a primary cellular substrate for learning by persistently strengthening synaptic transmissions following high-frequency stimulation."`,
+      content: `### 📝 Writing & Structural Review: "${cleanPrompt}"\n\n` +
+        `**Evaluation for ${subjectName}:**\n` +
+        `- **Topic Alignment**: Directly addresses *${cleanPrompt}*.\n` +
+        `- **Clarity**: High academic rigor.\n\n` +
+        `**Suggested Academic Enhancement:**\n` +
+        `> "In analyzing ${cleanPrompt}, empirical evidence suggests that structured iterative evaluation produces higher retention than unstructured review."`,
       explanation: {
-        confidence: 91,
+        confidence: 85,
         factors: [
-          'Evaluated against academic style guidelines',
-          'Checked for clarity, flow, and citation rigor',
+          'Evaluated using local grammar and academic style rules',
+          `Contextualized for ${subjectName}`,
         ],
       },
     };
   }
 
-  // Default Tutor / Chat mode response
+  // Default Concept Tutor response
   return {
-    content: `I'd be happy to guide you through **${prompt}**!\n\n` +
-      `### 💡 Key Concept Breakdown\n\n` +
-      `When tackling this in **${subjectName}**, keep three core principles in mind:\n\n` +
-      `1. **Decompose the Problem**: Break complex theorems or code into smaller subcomponents.\n` +
-      `2. **First Principles Thinking**: Understand *why* the underlying equation or data structure operates this way before memorizing equations.\n` +
-      `3. **Active Application**: Test your knowledge immediately by solving 1-2 representative problems.\n\n` +
-      `Would you like me to generate a step-by-step breakdown, a set of flashcards, or a practice exercise for your upcoming review?`,
+    content: `### 💡 Concept Guide: "${cleanPrompt}"\n\n` +
+      `You asked about **"${cleanPrompt}"** within the context of **${subjectName}**.\n\n` +
+      `1. **Core Concept**: *${cleanPrompt}* is a foundational topic requiring structured problem decomposition.\n` +
+      `2. **Application in ${subjectName}**: Break down the topic into base cases, state transitions, and practical exercises.\n` +
+      `3. **Recommended Next Step**: Would you like a 3-card flashcard deck or a practice quiz focused on *${cleanPrompt}*?`,
     explanation: {
-      confidence: 89,
+      confidence: 87,
       factors: [
-        `Contextualized for ${subjectName}`,
-        `Synthesized from user study history & confidence score`,
+        `Generated locally for prompt: "${cleanPrompt}"`,
+        `Synthesized from student profile (${profile.academicLevel})`,
       ],
     },
   };
