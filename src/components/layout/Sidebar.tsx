@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Calendar, Timer, Settings, Zap, Sparkles, Wifi, Sun, Moon, X } from 'lucide-react';
+import { Home, Calendar, BookOpen, Timer, Bot, BarChart2, Settings, Zap, Sparkles, Wifi, Sun, Moon, X } from 'lucide-react';
 import { ActiveTab, UserProfile } from '../../types';
 
 interface SidebarProps {
@@ -28,8 +28,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'home', label: 'Home', icon: <Home className="w-5 h-5" /> },
     { id: 'plan', label: 'Plan & Tasks', icon: <Calendar className="w-5 h-5" /> },
+    { id: 'workspace', label: 'Knowledge Workspace', icon: <BookOpen className="w-5 h-5" /> },
     { id: 'focus', label: 'Focus Room', icon: <Timer className="w-5 h-5" />, badge: `${focusMinutesToday}m` },
-    { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
+    { id: 'assistant', label: 'AI Study Coach', icon: <Bot className="w-5 h-5" /> },
+    { id: 'insights', label: 'Analytics & Insights', icon: <BarChart2 className="w-5 h-5" /> },
+    { id: 'settings', label: 'Settings & Profile', icon: <Settings className="w-5 h-5" /> },
   ];
 
   const content = (

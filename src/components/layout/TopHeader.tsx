@@ -1,35 +1,48 @@
-import React from 'react';
-import { ActiveTab, UserProfile } from '../../types';
-import { Sparkles, Plus, Bell, User, Menu, Sun, Moon } from 'lucide-react';
+import React, { useState } from 'react';
+import { ActiveTab, UserProfile, NotificationItem } from '../../types';
+import { Sparkles, Plus, Bell, User, Menu, Sun, Moon, CheckCheck, Clock, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Dropdown } from '../ui/Dropdown';
 
 interface TopHeaderProps {
   activeTab: ActiveTab;
   userProfile: UserProfile | null;
+  notifications: NotificationItem[];
   onOpenCommandPalette: () => void;
   onQuickTask: () => void;
   onToggleTheme: () => void;
+  onMarkNotificationRead: (id: string) => void;
+  onMarkAllNotificationsRead: () => void;
   onOpenMobileSidebar?: () => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
   activeTab,
   userProfile,
+  notifications,
   onOpenCommandPalette,
   onQuickTask,
   onToggleTheme,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
   onOpenMobileSidebar,
 }) => {
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const isLight = userProfile?.theme === 'light';
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const titles: Record<ActiveTab, { main: string; sub: string }> = {
     home: { main: `Welcome back, ${userProfile?.name || 'Scholar'}`, sub: "Here's your intelligent study orientation for today." },
     plan: { main: 'Planner & Tasks', sub: 'Organize deadlines, assignments, and study schedules.' },
+    workspace: { main: 'Knowledge Workspace', sub: 'Course modules, lecture notes, and formula derivations.' },
     focus: { main: 'Deep Work Focus Room', sub: 'Distraction-free environment with Web Audio sound synthesis.' },
-    settings: { main: 'System Settings', sub: 'Student profile preferences and local data export.' },
+    assistant: { main: 'AI Study Coach', sub: 'Explain concepts, review writing, helper coding, and practice quizzes.' },
+    insights: { main: 'Learning Analytics', sub: 'Track focus duration, subject mastery, and productivity velocity.' },
+    settings: { main: 'System Settings & Profile', sub: 'Personal student profile and system preferences.' },
   };
 
-  const currentTitle = titles[activeTab];
+  const currentTitle = titles[activeTab] || titles['home'];
 
   return (
     <header className="h-16 px-4 md:px-8 border-b border-[var(--border-glass)] flex items-center justify-between bg-[var(--bg-overlay)] backdrop-blur-md sticky top-0 z-20">
@@ -86,11 +99,63 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           <Sparkles className="w-4 h-4 text-[var(--accent-purple)]" />
         </button>
 
-        {/* Notifications */}
-        <button className="p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-glass)] hover:border-[var(--border-glass-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--accent-blue)]" />
-        </button>
+        {/* Notifications Dropdown (Issue 2 Fixed) */}
+        <div className="relative">
+          <button
+            onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+            className="p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-glass)] hover:border-[var(--border-glass-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer relative focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:outline-none"
+            title="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-rose)] text-white text-[9px] font-bold font-mono flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {isNotificationOpen && (
+            <div className="absolute right-0 mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border-glass-hover)] rounded-2xl shadow-2xl overflow-hidden z-50 p-3 space-y-2">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--border-glass)]">
+                <span className="text-xs font-bold text-[var(--text-primary)]">Notifications</span>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={onMarkAllNotificationsRead}
+                    className="text-[10px] text-[var(--accent-blue)] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                  >
+                    <CheckCheck className="w-3 h-3" />
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-64 overflow-y-auto space-y-1.5">
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-[var(--text-secondary)]">No new notifications.</div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => onMarkNotificationRead(n.id)}
+                      className={`p-2.5 rounded-xl border transition-all text-xs cursor-pointer ${
+                        n.read
+                          ? 'bg-[var(--bg-primary)] border-[var(--border-glass)] opacity-60'
+                          : 'bg-[var(--bg-tertiary)] border-[var(--border-glass-hover)] font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-primary)]">
+                        {n.type === 'deadline' && <Clock className="w-3.5 h-3.5 text-[var(--accent-rose)] shrink-0" />}
+                        {n.type === 'confidence' && <AlertTriangle className="w-3.5 h-3.5 text-[var(--accent-amber)] shrink-0" />}
+                        <span>{n.title}</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-tight">{n.message}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* User Avatar */}
         <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-glass)]">

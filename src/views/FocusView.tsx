@@ -5,13 +5,14 @@ import { Badge } from '../components/ui/Badge';
 import { FocusSession, Task, Subject } from '../types';
 import { soundService } from '../services/soundService';
 import confetti from 'canvas-confetti';
-import { Play, Pause, RotateCcw, Volume2, VolumeX, Sparkles, CheckCircle2, CloudRain, Waves, Radio } from 'lucide-react';
+import { Play, Pause, RotateCcw, Volume2, Sparkles, CheckCircle2, CloudRain, Waves, Radio, Tag, CheckSquare } from 'lucide-react';
 
 interface FocusViewProps {
   tasks: Task[];
   subjects: Subject[];
   focusSessions: FocusSession[];
   onLogFocusSession: (session: Omit<FocusSession, 'id' | 'completedAt'>) => void;
+  activeFocusTaskId?: string | null;
 }
 
 export const FocusView: React.FC<FocusViewProps> = ({
@@ -19,14 +20,15 @@ export const FocusView: React.FC<FocusViewProps> = ({
   subjects,
   focusSessions,
   onLogFocusSession,
+  activeFocusTaskId,
 }) => {
   const [timerType, setTimerType] = useState<'pomodoro' | 'deep_work' | 'stopwatch'>('pomodoro');
   const [targetMinutes, setTargetMinutes] = useState<number>(25);
   const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(25 * 60);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
-  // Selected task / subject link
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  // Selected task / subject link (Issue 1 Fixed with UI Selectors & Prop Binding)
+  const [selectedTaskId, setSelectedTaskId] = useState<string>(activeFocusTaskId || '');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
 
   // Ambient sound state
@@ -36,16 +38,20 @@ export const FocusView: React.FC<FocusViewProps> = ({
   const [distractionCount, setDistractionCount] = useState<number>(0);
   const [reflectionRating, setReflectionRating] = useState<number>(5);
 
-  // Stop ambient audio if the user navigates away from Focus while it's playing.
-  // soundService is a module-level singleton, so without this the noise node
-  // keeps looping in the background after this component unmounts.
+  useEffect(() => {
+    if (activeFocusTaskId) {
+      setSelectedTaskId(activeFocusTaskId);
+      const t = tasks.find((t) => t.id === activeFocusTaskId);
+      if (t?.subjectId) setSelectedSubjectId(t.subjectId);
+    }
+  }, [activeFocusTaskId, tasks]);
+
   useEffect(() => {
     return () => {
       soundService.stop();
     };
   }, []);
 
-  // Sync target minutes when mode changes
   useEffect(() => {
     if (timerType === 'pomodoro') setTargetMinutes(25);
     else if (timerType === 'deep_work') setTargetMinutes(45);
@@ -54,7 +60,6 @@ export const FocusView: React.FC<FocusViewProps> = ({
     setIsRunning(false);
   }, [timerType]);
 
-  // Main countdown / count-up effect
   useEffect(() => {
     let interval: any = null;
     if (isRunning) {
@@ -78,14 +83,10 @@ export const FocusView: React.FC<FocusViewProps> = ({
   const handleTimerComplete = () => {
     setIsRunning(false);
 
-    // Compute actual elapsed time rather than assuming the full target was reached.
-    // Stopwatch counts up, so timeLeftSeconds already IS the elapsed time.
-    // Countdown modes count down from targetMinutes*60, so elapsed = target - remaining.
     const elapsedSeconds =
       timerType === 'stopwatch' ? timeLeftSeconds : targetMinutes * 60 - timeLeftSeconds;
     const actualDurationMinutes = Math.round(elapsedSeconds / 60);
 
-    // Guard against logging a session for an accidental instant "complete" click.
     if (actualDurationMinutes < 1) return;
 
     soundService.playTimerCompletionBell();
@@ -124,9 +125,54 @@ export const FocusView: React.FC<FocusViewProps> = ({
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
+      {/* Task & Subject Binding Controls (Issue 1 Fixed) */}
+      <div className="max-w-xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
+            <CheckSquare className="w-3.5 h-3.5 text-[var(--accent-blue)]" />
+            Link Focus Task
+          </label>
+          <select
+            value={selectedTaskId}
+            onChange={(e) => {
+              setSelectedTaskId(e.target.value);
+              const t = tasks.find((tk) => tk.id === e.target.value);
+              if (t?.subjectId) setSelectedSubjectId(t.subjectId);
+            }}
+            className="w-full px-3.5 py-2 bg-[var(--bg-secondary)] border border-[var(--border-glass)] rounded-xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+          >
+            <option value="">General Focus (No Task)</option>
+            {tasks.filter((t) => t.status !== 'completed').map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title} ({t.estimatedMinutes}m)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
+            <Tag className="w-3.5 h-3.5 text-[var(--accent-emerald)]" />
+            Link Course Subject
+          </label>
+          <select
+            value={selectedSubjectId}
+            onChange={(e) => setSelectedSubjectId(e.target.value)}
+            className="w-full px-3.5 py-2 bg-[var(--bg-secondary)] border border-[var(--border-glass)] rounded-xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+          >
+            <option value="">General Course (Unlinked)</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.code || s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Timer Type Selector */}
       <div className="flex justify-center">
-        <div className="p-1.5 bg-[#111B2E] border border-white/10 rounded-2xl flex items-center gap-2">
+        <div className="p-1.5 bg-[var(--bg-secondary)] border border-[var(--border-glass)] rounded-2xl flex items-center gap-2">
           <Button
             variant={timerType === 'pomodoro' ? 'primary' : 'ghost'}
             size="sm"
@@ -152,7 +198,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
       </div>
 
       {/* Main Focus Ring Card */}
-      <Card className="max-w-xl mx-auto p-10 text-center space-y-8 relative overflow-hidden bg-gradient-to-b from-[#111B2E] to-[#0B1220]">
+      <Card className="max-w-xl mx-auto p-10 text-center space-y-8 relative overflow-hidden bg-[var(--bg-secondary)]">
         {/* Ring Graphic */}
         <div className="relative w-64 h-64 mx-auto flex items-center justify-center">
           <svg className="w-full h-full transform -rotate-90">
@@ -160,7 +206,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
               cx="128"
               cy="128"
               r="110"
-              className="stroke-slate-800"
+              className="stroke-[var(--border-glass)]"
               strokeWidth="10"
               fill="transparent"
             />
@@ -168,7 +214,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
               cx="128"
               cy="128"
               r="110"
-              className="stroke-[#4F7CFF] transition-all duration-1000"
+              className="stroke-[var(--accent-blue)] transition-all duration-1000"
               strokeWidth="10"
               strokeDasharray={2 * Math.PI * 110}
               strokeDashoffset={2 * Math.PI * 110 * (1 - progressPercent / 100)}
@@ -178,10 +224,10 @@ export const FocusView: React.FC<FocusViewProps> = ({
           </svg>
 
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-5xl font-extrabold font-mono text-white tracking-wider">
+            <div className="text-5xl font-extrabold font-mono text-[var(--text-primary)] tracking-wider">
               {formatTime(timeLeftSeconds)}
             </div>
-            <div className="text-xs text-slate-400 font-medium uppercase tracking-widest mt-1">
+            <div className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-widest mt-1">
               {isRunning ? 'FOCUS SESSION ACTIVE' : 'READY TO START'}
             </div>
           </div>
@@ -192,7 +238,7 @@ export const FocusView: React.FC<FocusViewProps> = ({
           <Button
             variant="ghost"
             size="md"
-            icon={<RotateCcw className="w-5 h-5 text-slate-400" />}
+            icon={<RotateCcw className="w-5 h-5 text-[var(--text-secondary)]" />}
             onClick={() => {
               setIsRunning(false);
               setTimeLeftSeconds(targetMinutes * 60);
@@ -219,9 +265,9 @@ export const FocusView: React.FC<FocusViewProps> = ({
         </div>
 
         {/* Ambient Audio Generator controls */}
-        <div className="pt-6 border-t border-white/10 space-y-3">
-          <div className="text-xs font-mono text-slate-400 flex items-center justify-center gap-1.5">
-            <Volume2 className="w-4 h-4 text-[#2DD4BF]" />
+        <div className="pt-6 border-t border-[var(--border-glass)] space-y-3">
+          <div className="text-xs font-mono text-[var(--text-secondary)] flex items-center justify-center gap-1.5">
+            <Volume2 className="w-4 h-4 text-[var(--accent-emerald)]" />
             Synthesize Ambient Focus Audio (Web Audio API)
           </div>
 
@@ -258,8 +304,8 @@ export const FocusView: React.FC<FocusViewProps> = ({
 
       {/* Focus History & Logs */}
       <div className="space-y-4">
-        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[#FBBF24]" />
+        <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-[var(--accent-amber)]" />
           Recent Completed Focus Sessions
         </h3>
 
@@ -267,10 +313,10 @@ export const FocusView: React.FC<FocusViewProps> = ({
           {focusSessions.slice(0, 4).map((s) => (
             <Card key={s.id} className="p-4 flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold text-slate-100 capitalize">
+                <div className="text-sm font-semibold text-[var(--text-primary)] capitalize">
                   {s.type.replace('_', ' ')} Session ({s.durationMinutes}m)
                 </div>
-                <div className="text-xs text-slate-400 mt-1">
+                <div className="text-xs text-[var(--text-secondary)] mt-1">
                   Completed {new Date(s.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>

@@ -1,13 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, seedInitialDataIfEmpty } from '../db/database';
-import { ActiveTab, Subject, Task, FocusSession, UserProfile } from '../types';
+import { 
+  ActiveTab, 
+  Subject, 
+  Topic, 
+  Task, 
+  Note, 
+  Flashcard, 
+  FocusSession, 
+  AIInteraction, 
+  NotificationItem, 
+  UserProfile 
+} from '../types';
 import { calculateNextBestAction } from '../services/heuristics';
 
 export function useAetherStore() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
   const [explainabilityModalOpen, setExplainabilityModalOpen] = useState<boolean>(false);
+  
+  // Active focus payload deep-linking state
+  const [activeFocusTaskId, setActiveFocusTaskId] = useState<string | null>(null);
 
   // Seed DB on mount
   useEffect(() => {
@@ -26,10 +40,15 @@ export function useAetherStore() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Reactive Dexie Live Queries
+  // Reactive Dexie Live Queries for all 9 tables
   const subjects = useLiveQuery(() => db.subjects.toArray(), []) || [];
+  const topics = useLiveQuery(() => db.topics.toArray(), []) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
+  const notes = useLiveQuery(() => db.notes.orderBy('updatedAt').reverse().toArray(), []) || [];
+  const flashcards = useLiveQuery(() => db.flashcards.toArray(), []) || [];
   const focusSessions = useLiveQuery(() => db.focusSessions.toArray(), []) || [];
+  const aiChats = useLiveQuery(() => db.aiInteractions.orderBy('timestamp').toArray(), []) || [];
+  const notifications = useLiveQuery(() => db.notifications.orderBy('createdAt').reverse().toArray(), []) || [];
   const userProfile = useLiveQuery(async () => {
     const profile = await db.userProfile.get('default_user');
     return profile || null;
@@ -72,6 +91,24 @@ export function useAetherStore() {
     await db.subjects.add(newSubject);
   };
 
+  // Note Mutations
+  const addNote = async (note: Omit<Note, 'id' | 'updatedAt'>) => {
+    const newNote: Note = {
+      ...note,
+      id: `note_${Date.now()}`,
+      updatedAt: Date.now(),
+    };
+    await db.notes.add(newNote);
+  };
+
+  const updateNote = async (id: string, content: string, title?: string) => {
+    await db.notes.update(id, {
+      content,
+      title: title || undefined,
+      updatedAt: Date.now(),
+    });
+  };
+
   // Focus Session Mutations
   const logFocusSession = async (session: Omit<FocusSession, 'id' | 'completedAt'>) => {
     const newSession: FocusSession = {
@@ -81,7 +118,6 @@ export function useAetherStore() {
     };
     await db.focusSessions.add(newSession);
 
-    // Update linked task completed minutes if applicable
     if (session.taskId) {
       const task = await db.tasks.get(session.taskId);
       if (task) {
@@ -92,6 +128,32 @@ export function useAetherStore() {
           completedAt: updatedMinutes >= task.estimatedMinutes ? Date.now() : undefined,
         });
       }
+    }
+  };
+
+  // AI Chat Mutations
+  const addAIMessage = async (msg: Omit<AIInteraction, 'id' | 'timestamp'>) => {
+    const newMsg: AIInteraction = {
+      ...msg,
+      id: `ai_${Date.now()}`,
+      timestamp: Date.now(),
+    };
+    await db.aiInteractions.add(newMsg);
+  };
+
+  const clearAIChats = async () => {
+    await db.aiInteractions.clear();
+  };
+
+  // Notification Mutations
+  const markNotificationAsRead = async (id: string) => {
+    await db.notifications.update(id, { read: true });
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    const unread = await db.notifications.where('read').equals(0).toArray();
+    for (const n of unread) {
+      await db.notifications.update(n.id, { read: true });
     }
   };
 
@@ -107,10 +169,17 @@ export function useAetherStore() {
     setCommandPaletteOpen,
     explainabilityModalOpen,
     setExplainabilityModalOpen,
+    activeFocusTaskId,
+    setActiveFocusTaskId,
 
     subjects,
+    topics,
     tasks,
+    notes,
+    flashcards,
     focusSessions,
+    aiChats,
+    notifications,
     userProfile,
     nextBestAction,
 
@@ -118,7 +187,13 @@ export function useAetherStore() {
     toggleTaskStatus,
     deleteTask,
     addSubject,
+    addNote,
+    updateNote,
     logFocusSession,
+    addAIMessage,
+    clearAIChats,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
     updateProfile,
   };
 }

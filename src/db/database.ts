@@ -1,18 +1,38 @@
 import Dexie, { Table } from 'dexie';
-import { Subject, Task, FocusSession, UserProfile } from '../types';
+import { 
+  Subject, 
+  Topic, 
+  Task, 
+  Note, 
+  Flashcard, 
+  FocusSession, 
+  AIInteraction, 
+  NotificationItem, 
+  UserProfile 
+} from '../types';
 
 export class AetherDatabase extends Dexie {
   subjects!: Table<Subject>;
+  topics!: Table<Topic>;
   tasks!: Table<Task>;
+  notes!: Table<Note>;
+  flashcards!: Table<Flashcard>;
   focusSessions!: Table<FocusSession>;
+  aiInteractions!: Table<AIInteraction>;
+  notifications!: Table<NotificationItem>;
   userProfile!: Table<UserProfile & { id: string }>;
 
   constructor() {
-    super('AetherPhase1DB');
+    super('AetherPhase3DB');
     this.version(1).stores({
       subjects: 'id, name, confidenceRating',
+      topics: 'id, subjectId, title, masteryLevel',
       tasks: 'id, subjectId, priority, status, dueDate',
+      notes: 'id, subjectId, topicId, title, updatedAt',
+      flashcards: 'id, subjectId, topicId, nextReviewDate',
       focusSessions: 'id, subjectId, taskId, completedAt, durationMinutes',
+      aiInteractions: 'id, mode, timestamp',
+      notifications: 'id, type, read, createdAt',
       userProfile: 'id',
     });
   }
@@ -32,10 +52,12 @@ export async function seedInitialDataIfEmpty() {
   await db.userProfile.put({
     id: 'default_user',
     name: 'Alex Rivera',
+    email: 'alex.rivera@university.edu',
     academicLevel: 'B.S. Computer Science & AI (Year 3)',
     studyGoalHoursWeekly: 25,
     theme: 'dark',
     soundEnabled: true,
+    aiProvider: 'local',
   });
 
   // 2. Initial Subjects
@@ -83,7 +105,16 @@ export async function seedInitialDataIfEmpty() {
   ];
   await db.subjects.bulkAdd(subjects);
 
-  // 3. Initial Tasks
+  // 3. Initial Topics
+  const topics: Topic[] = [
+    { id: 'top_dp', subjectId: 'sub_cs301', title: 'Dynamic Programming & Memoization', masteryLevel: 45, lastReviewedAt: now - 2 * dayMs },
+    { id: 'top_graphs', subjectId: 'sub_cs301', title: 'Graph Traversal & Shortest Paths', masteryLevel: 65, lastReviewedAt: now - 4 * dayMs },
+    { id: 'top_wave', subjectId: 'sub_phys202', title: 'Schrödinger Wave Equation Derivations', masteryLevel: 35, lastReviewedAt: now - 1 * dayMs },
+    { id: 'top_eigen', subjectId: 'sub_math210', title: 'Eigenvalues & Singular Value Decomposition (SVD)', masteryLevel: 88, lastReviewedAt: now - 5 * dayMs },
+  ];
+  await db.topics.bulkAdd(topics);
+
+  // 4. Initial Tasks
   const tasks: Task[] = [
     {
       id: 'task_1',
@@ -125,7 +156,59 @@ export async function seedInitialDataIfEmpty() {
   ];
   await db.tasks.bulkAdd(tasks);
 
-  // 4. Initial Focus Sessions
+  // 5. Initial Notes
+  const notes: Note[] = [
+    {
+      id: 'note_dp',
+      subjectId: 'sub_cs301',
+      topicId: 'top_dp',
+      title: 'Mastering Dynamic Programming Patterns',
+      content: `# Dynamic Programming & Optimal Substructure
+
+Dynamic programming is an optimization technique that breaks down complex recursive problems into overlapping subproblems.
+
+## The 4-Step DP Framework
+1. **Identify States**: Define parameters that uniquely represent subproblems (e.g. \`dp[i][j]\`).
+2. **Formulate Recurrence Relation**: Express the state transition equation:
+   $$\\text{dp}[i] = \\min_{j < i} (\\text{dp}[j] + \\text{cost}(j, i))$$
+3. **Establish Base Cases**: Define starting conditions (e.g. \`dp[0] = 0\`).
+4. **Determine Evaluation Order**: Bottom-up (iterative table) vs. Top-down (memoized recursion).
+
+\`\`\`python
+def fib_memo(n, memo={}):
+    if n in memo: return memo[n]
+    if n <= 1: return n
+    memo[n] = fib_memo(n-1, memo) + fib_memo(n-2, memo)
+    return memo[n]
+\`\`\`
+
+> **Pro Tip**: Use rolling arrays to reduce space complexity from $O(N)$ to $O(1)$ when only the previous row is needed.`,
+      tags: ['algorithms', 'dp', 'interview-prep'],
+      updatedAt: now - 1 * dayMs,
+      isFavorite: true,
+    },
+    {
+      id: 'note_wave',
+      subjectId: 'sub_phys202',
+      topicId: 'top_wave',
+      title: 'Quantum Wave Mechanics Summary',
+      content: `# Quantum Wave Mechanics & Hilbert Spaces
+
+The time-dependent Schrödinger equation describes how the quantum state of a physical system changes over time:
+
+$$i\\hbar \\frac{\\partial}{\\partial t} \\Psi(\\mathbf{r},t) = \\hat{H} \\Psi(\\mathbf{r},t)$$
+
+Where:
+- $\\hat{H} = -\\frac{\\hbar^2}{2m} \\nabla^2 + V(\\mathbf{r},t)$ is the Hamiltonian operator.
+- $|\\Psi(\\mathbf{r},t)|^2$ represents the probability density of finding the particle at coordinates $\\mathbf{r}$.`,
+      tags: ['quantum', 'physics', 'equations'],
+      updatedAt: now - 2 * dayMs,
+      isFavorite: false,
+    },
+  ];
+  await db.notes.bulkAdd(notes);
+
+  // 6. Initial Focus Sessions
   const focusSessions: FocusSession[] = [
     {
       id: 'focus_1',
@@ -151,4 +234,39 @@ export async function seedInitialDataIfEmpty() {
     },
   ];
   await db.focusSessions.bulkAdd(focusSessions);
+
+  // 7. Initial AI Chats
+  const aiChats: AIInteraction[] = [
+    {
+      id: 'ai_1',
+      role: 'assistant',
+      content: "Hello Alex! I've analyzed your schedule. You have a Quantum Physics exam derivation due tomorrow and a Dynamic Programming problem set in 2 days. Would you like me to generate a 5-question practice quiz or explain Schrödinger equation wave derivations?",
+      mode: 'tutor',
+      timestamp: now - 10 * 60 * 1000,
+    },
+  ];
+  await db.aiInteractions.bulkAdd(aiChats);
+
+  // 8. Initial Notifications
+  const notifications: NotificationItem[] = [
+    {
+      id: 'notif_1',
+      type: 'deadline',
+      title: 'Upcoming Urgent Deadline',
+      message: 'Derive 3D Time-Dependent Schrödinger Wave Equation is due in 24 hours!',
+      relatedTaskId: 'task_2',
+      read: false,
+      createdAt: now - 30 * 60 * 1000,
+    },
+    {
+      id: 'notif_2',
+      type: 'confidence',
+      title: 'Low Subject Confidence Warning',
+      message: 'Your Quantum Mechanics confidence rating is currently at 42%. Practice quiz recommended.',
+      relatedSubjectId: 'sub_phys202',
+      read: false,
+      createdAt: now - 2 * 60 * 60 * 1000,
+    },
+  ];
+  await db.notifications.bulkAdd(notifications);
 }

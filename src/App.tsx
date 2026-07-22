@@ -8,7 +8,10 @@ import { ToastProvider } from './components/ui/Toast';
 
 import { HomeView } from './views/HomeView';
 import { PlanView } from './views/PlanView';
+import { WorkspaceView } from './views/WorkspaceView';
 import { FocusView } from './views/FocusView';
+import { AIAssistantView } from './views/AIAssistantView';
+import { InsightsView } from './views/InsightsView';
 import { SettingsView } from './views/SettingsView';
 
 export function AppContent() {
@@ -33,6 +36,11 @@ export function AppContent() {
     await store.updateProfile({ theme: nextTheme });
   };
 
+  const handleStartFocusWithTask = (taskId?: string) => {
+    if (taskId) store.setActiveFocusTaskId(taskId);
+    store.setActiveTab('focus');
+  };
+
   const totalFocusMinutesToday = store.focusSessions.reduce((acc, s) => acc + s.durationMinutes, 0);
 
   return (
@@ -54,9 +62,12 @@ export function AppContent() {
         <TopHeader
           activeTab={store.activeTab}
           userProfile={store.userProfile || null}
+          notifications={store.notifications}
           onOpenCommandPalette={() => store.setCommandPaletteOpen(true)}
           onQuickTask={() => store.setActiveTab('plan')}
           onToggleTheme={handleToggleTheme}
+          onMarkNotificationRead={store.markNotificationAsRead}
+          onMarkAllNotificationsRead={store.markAllNotificationsAsRead}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
         />
 
@@ -69,6 +80,7 @@ export function AppContent() {
               focusSessions={store.focusSessions}
               onOpenExplainability={() => store.setExplainabilityModalOpen(true)}
               onSelectTab={store.setActiveTab}
+              onStartFocusWithTask={handleStartFocusWithTask}
               onToggleTask={store.toggleTaskStatus}
             />
           )}
@@ -84,12 +96,44 @@ export function AppContent() {
             />
           )}
 
+          {store.activeTab === 'workspace' && (
+            <WorkspaceView
+              subjects={store.subjects}
+              topics={store.topics}
+              notes={store.notes}
+              flashcards={store.flashcards}
+              onAddSubject={store.addSubject}
+              onAddNote={store.addNote}
+              onUpdateNote={store.updateNote}
+            />
+          )}
+
           {store.activeTab === 'focus' && (
             <FocusView
               tasks={store.tasks}
               subjects={store.subjects}
               focusSessions={store.focusSessions}
               onLogFocusSession={store.logFocusSession}
+              activeFocusTaskId={store.activeFocusTaskId}
+            />
+          )}
+
+          {store.activeTab === 'assistant' && (
+            <AIAssistantView
+              aiChats={store.aiChats}
+              subjects={store.subjects}
+              userProfile={store.userProfile || null}
+              onAddAIMessage={store.addAIMessage}
+              onClearChats={store.clearAIChats}
+            />
+          )}
+
+          {store.activeTab === 'insights' && (
+            <InsightsView
+              subjects={store.subjects}
+              tasks={store.tasks}
+              focusSessions={store.focusSessions}
+              userProfile={store.userProfile || null}
             />
           )}
 
@@ -109,6 +153,9 @@ export function AppContent() {
         onSelectTab={store.setActiveTab}
         onQuickTask={() => store.setActiveTab('plan')}
         onStartFocus={() => store.setActiveTab('focus')}
+        tasks={store.tasks}
+        subjects={store.subjects}
+        notes={store.notes}
       />
 
       {/* Explainability Reasoning Modal */}
