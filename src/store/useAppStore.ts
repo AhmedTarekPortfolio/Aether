@@ -124,6 +124,10 @@ export function useAetherStore() {
     });
   };
 
+  const updateTask = async (taskId: string, updates: Partial<Task>) => {
+    await api.updateTask(taskId, updates);
+  };
+
   const deleteTask = async (taskId: string) => {
     await api.deleteTask(taskId);
   };
@@ -137,6 +141,10 @@ export function useAetherStore() {
       createdAt: Date.now(),
     };
     await api.addSubject(newSubject);
+  };
+
+  const updateSubject = async (subjectId: string, updates: Partial<Subject>) => {
+    await api.updateSubject(subjectId, updates);
   };
 
   const deleteSubject = async (subjectId: string) => {
@@ -154,12 +162,15 @@ export function useAetherStore() {
     await api.addNote(newNote);
   };
 
-  const updateNote = async (id: string, content: string, title?: string) => {
+  const updateNote = async (id: string, updates: Partial<Note>) => {
     await api.updateNote(id, {
-      content,
-      title: title || undefined,
+      ...updates,
       updatedAt: Date.now(),
     });
+  };
+
+  const deleteNote = async (id: string) => {
+    await api.deleteNote(id);
   };
 
   // Focus Session Mutations via API layer
@@ -260,11 +271,14 @@ export function useAetherStore() {
 
     addTask: addTask as (task: Omit<Task, 'id' | 'createdAt'>) => Promise<void>,
     toggleTaskStatus,
+    updateTask,
     deleteTask,
     addSubject: addSubject as (subject: Omit<Subject, 'id' | 'createdAt'>) => Promise<void>,
+    updateSubject,
     deleteSubject,
-    addNote: addNote as (note: Omit<Note, 'id' | 'updatedAt'>) => Promise<void>,
+    addNote: addNote as (note: Omit<Note, 'id' | 'userId' | 'updatedAt'>) => Promise<void>,
     updateNote,
+    deleteNote,
     logFocusSession: logFocusSession as (session: Omit<Session, 'id' | 'completedAt'>) => Promise<void>,
     addAIMessage: addAIMessage as (msg: Omit<AIConversation, 'id' | 'timestamp'>) => Promise<void>,
     clearAIChats,

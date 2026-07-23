@@ -14,6 +14,7 @@ import {
 } from '../services/workspaceMetrics';
 import { 
   checkSubjectReferences, 
+  validateSubjectName, 
   SubjectReferences 
 } from '../api/subjectApi';
 import { 
@@ -42,9 +43,11 @@ interface WorkspaceViewProps {
   notes: Note[];
   flashcards: Flashcard[];
   onAddSubject: (subject: Omit<Subject, 'id' | 'createdAt'>) => void;
+  onUpdateSubject?: (id: string, updates: Partial<Subject>) => Promise<void> | void;
   onDeleteSubject?: (id: string) => Promise<void> | void;
   onAddNote: (note: Omit<Note, 'id' | 'updatedAt'>) => void;
-  onUpdateNote: (id: string, content: string, title?: string) => void;
+  onUpdateNote: (id: string, updates: Partial<Note>) => void;
+  onDeleteNote?: (id: string) => Promise<void> | void;
 }
 
 // Framer Motion Animation Variants
@@ -73,9 +76,11 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   notes,
   flashcards,
   onAddSubject,
+  onUpdateSubject,
   onDeleteSubject,
   onAddNote,
   onUpdateNote,
+  onDeleteNote,
 }) => {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(
     subjects[0]?.id || null
@@ -94,6 +99,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   const [deleteReferences, setDeleteReferences] = useState<SubjectReferences | null>(null);
   const [isDeleteSubjectModalOpen, setIsDeleteSubjectModalOpen] = useState(false);
 
+  // Subject Edit State
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [subjectFormError, setSubjectFormError] = useState<string | null>(null);
+
   const handleInitiateSubjectDelete = async (subjectId: string) => {
     const sub = subjects.find((s) => s.id === subjectId);
     if (!sub) return;
@@ -101,6 +110,28 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     setSubjectToDelete(sub);
     setDeleteReferences(refs);
     setIsDeleteSubjectModalOpen(true);
+  };
+
+  const handleOpenCreateSubject = () => {
+    setEditingSubjectId(null);
+    setNewSubName('');
+    setNewSubCode('');
+    setNewSubColor('var(--accent-blue)');
+    setNewSubGrade('A');
+    setNewSubConfidence(70);
+    setSubjectFormError(null);
+    setIsSubjectModalOpen(true);
+  };
+
+  const handleOpenEditSubject = (sub: Subject) => {
+    setEditingSubjectId(sub.id);
+    setNewSubName(sub.name);
+    setNewSubCode(sub.code || '');
+    setNewSubColor(sub.color || 'var(--accent-blue)');
+    setNewSubGrade(sub.targetGrade || 'A');
+    setNewSubConfidence(sub.confidenceRating);
+    setSubjectFormError(null);
+    setIsSubjectModalOpen(true);
   };
 
   // New Subject Form State
@@ -118,7 +149,13 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   // Active Note Editor State
   const selectedNote = notes.find((n) => n.id === selectedNoteId);
   const [isEditingNote, setIsEditingNote] = useState(false);
-  const [editContent, setEditContent] = useState(selectedNote?.content || '');
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editTags, setEditTags] = useState('');
+
+  // Note Deletion State
+  const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
+  const [isDeleteNoteModalOpen, setIsDeleteNoteModalOpen] = useState(false);
 
   // Flashcard Review State
   const [flashcardIdx, setFlashcardIdx] = useState(0);
@@ -142,19 +179,42 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     selectedSubjectId ? t.subjectId === selectedSubjectId : true
   );
 
-  const handleSubjectSubmit = (e: React.FormEvent) => {
+  const handleSubjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubName.trim()) return;
-    onAddSubject({
-      name: newSubName,
-      code: newSubCode || undefined,
-      color: newSubColor,
-      confidenceRating: Number(newSubConfidence) || 70,
-      targetGrade: newSubGrade,
-    });
-    setNewSubName('');
-    setNewSubCode('');
-    setIsSubjectModalOpen(false);
+    if (!newSubName.trim()) {
+      setSubjectFormError('Subject name cannot be empty');
+      return;
+    }
+
+    try {
+      setSubjectFormError(null);
+      await validateSubjectName(newSubName, editingSubjectId || undefined);
+
+      if (editingSubjectId && onUpdateSubject) {
+        await onUpdateSubject(editingSubjectId, {
+          name: newSubName,
+          code: newSubCode || undefined,
+          color: newSubColor,
+          targetGrade: newSubGrade,
+          confidenceRating: Number(newSubConfidence) || 70,
+        });
+      } else {
+        onAddSubject({
+          name: newSubName,
+          code: newSubCode || undefined,
+          color: newSubColor,
+          targetGrade: newSubGrade,
+          confidenceRating: Number(newSubConfidence) || 70,
+        });
+      }
+
+      setNewSubName('');
+      setNewSubCode('');
+      setEditingSubjectId(null);
+      setIsSubjectModalOpen(false);
+    } catch (err: any) {
+      setSubjectFormError(err.message || 'Validation error');
+    }
   };
 
   const handleNoteSubmit = (e: React.FormEvent) => {
@@ -174,7 +234,11 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
   const handleSaveNoteEdit = () => {
     if (selectedNoteId) {
-      onUpdateNote(selectedNoteId, editContent);
+      onUpdateNote(selectedNoteId, {
+        title: editTitle,
+        content: editContent,
+        tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
+      });
       setIsEditingNote(false);
     }
   };
@@ -314,6 +378,17 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          const fullSub = subjects.find((s) => s.id === sub.id);
+                          if (fullSub) handleOpenEditSubject(fullSub);
+                        }}
+                        title="Edit Subject"
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-blue)] rounded-lg hover:bg-[var(--accent-blue)]/10 transition-colors cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleInitiateSubjectDelete(sub.id);
                         }}
                         title="Delete Subject"
@@ -355,7 +430,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               variant="primary"
               size="sm"
               icon={<Plus className="w-4 h-4" />}
-              onClick={() => setIsSubjectModalOpen(true)}
+              onClick={handleOpenCreateSubject}
               className="mt-2"
             >
               Create Subject
@@ -426,7 +501,9 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                         interactive
                         onClick={() => {
                           setSelectedNoteId(n.id);
+                          setEditTitle(n.title);
                           setEditContent(n.content);
+                          setEditTags((n.tags || []).join(', '));
                           setIsEditingNote(false);
                         }}
                         className={`p-4 transition-all border ${
@@ -482,22 +559,58 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                           size="sm"
                           icon={<Edit3 className="w-4 h-4" />}
                           onClick={() => {
+                            setEditTitle(selectedNote.title);
                             setEditContent(selectedNote.content);
+                            setEditTags((selectedNote.tags || []).join(', '));
                             setIsEditingNote(true);
                           }}
                         >
                           Edit Note
                         </Button>
                       )}
+
+                      <button
+                        onClick={() => {
+                          setNoteToDelete(selectedNote);
+                          setIsDeleteNoteModalOpen(true);
+                        }}
+                        title="Delete Note"
+                        className="p-2 text-[var(--text-muted)] hover:text-[var(--accent-rose)] rounded-xl hover:bg-[var(--accent-rose)]/10 border border-[var(--border-glass)] transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
                   {isEditingNote ? (
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full h-80 p-4 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl font-mono text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)] resize-none"
-                    />
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Title</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-sm font-bold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Tags (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={editTags}
+                          onChange={(e) => setEditTags(e.target.value)}
+                          className="w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Content</label>
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full h-72 p-4 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl font-mono text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)] resize-none"
+                        />
+                      </div>
+                    </div>
                   ) : (
                     <div className="prose max-w-none text-[var(--text-primary)] text-xs leading-relaxed whitespace-pre-line font-sans space-y-2 min-h-[200px]">
                       {selectedNote.content}
@@ -761,13 +874,19 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
         </div>
       </motion.section>
 
-      {/* Add Subject Modal */}
+      {/* Add / Edit Subject Modal */}
       <Modal
         isOpen={isSubjectModalOpen}
         onClose={() => setIsSubjectModalOpen(false)}
-        title="Add Academic Subject"
+        title={editingSubjectId ? 'Edit Academic Subject' : 'Add Academic Subject'}
       >
         <form onSubmit={handleSubjectSubmit} className="space-y-4">
+          {subjectFormError && (
+            <div className="p-3 text-xs text-[var(--accent-rose)] bg-[var(--accent-rose)]/10 border border-[var(--accent-rose)]/30 rounded-xl">
+              {subjectFormError}
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Subject Name *</label>
             <input
@@ -809,7 +928,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               Cancel
             </Button>
             <Button variant="primary" size="md" type="submit">
-              Save Subject
+              {editingSubjectId ? 'Save Changes' : 'Save Subject'}
             </Button>
           </div>
         </form>
@@ -964,6 +1083,43 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Delete Note Modal */}
+      <Modal
+        isOpen={isDeleteNoteModalOpen}
+        onClose={() => setIsDeleteNoteModalOpen(false)}
+        title="Confirm Note Deletion"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-primary)]">
+            Delete note <span className="font-bold text-[var(--accent-blue)]">'{noteToDelete?.title}'</span>?
+          </p>
+          <p className="text-xs text-[var(--text-muted)]">
+            This action cannot be undone.
+          </p>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-glass)]">
+            <Button variant="ghost" size="md" onClick={() => setIsDeleteNoteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              onClick={async () => {
+                if (noteToDelete && onDeleteNote) {
+                  await onDeleteNote(noteToDelete.id);
+                  if (selectedNoteId === noteToDelete.id) {
+                    setSelectedNoteId(null);
+                  }
+                }
+                setIsDeleteNoteModalOpen(false);
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
       </Modal>
     </motion.div>
   );

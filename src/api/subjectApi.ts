@@ -15,8 +15,24 @@ export interface SubjectReferences {
   isDeletable: boolean;
 }
 
+export async function validateSubjectName(name: string, excludeSubjectId?: string): Promise<boolean> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error('Subject name cannot be empty');
+  }
+  const all = await db.subjects.toArray();
+  const duplicate = all.find(
+    (s) => s.id !== excludeSubjectId && s.name.trim().toLowerCase() === trimmed.toLowerCase()
+  );
+  if (duplicate) {
+    throw new Error(`A subject named '${duplicate.name}' already exists.`);
+  }
+  return true;
+}
+
 export async function addSubject(subject: Subject): Promise<void> {
   try {
+    await validateSubjectName(subject.name);
     await db.subjects.add(subject);
   } catch (err) {
     logger.error('Failed to add subject', err);
@@ -30,6 +46,18 @@ export async function getSubjects(): Promise<Subject[]> {
   } catch (err) {
     logger.error('Failed to fetch subjects', err);
     throw new StorageError('getSubjects', err);
+  }
+}
+
+export async function updateSubject(id: string, updates: Partial<Subject>): Promise<void> {
+  try {
+    if (updates.name !== undefined) {
+      await validateSubjectName(updates.name, id);
+    }
+    await db.subjects.update(id, updates);
+  } catch (err) {
+    logger.error('Failed to update subject', err);
+    throw new StorageError('updateSubject', err);
   }
 }
 

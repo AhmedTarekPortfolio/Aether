@@ -77,8 +77,10 @@ export function AppContent() {
               subjects={store.subjects}
               onAddTask={store.addTask}
               onToggleTask={store.toggleTaskStatus}
+              onUpdateTask={store.updateTask}
               onDeleteTask={store.deleteTask}
               onAddSubject={store.addSubject}
+              onUpdateSubject={store.updateSubject}
               onDeleteSubject={store.deleteSubject}
             />
           )}
@@ -90,9 +92,11 @@ export function AppContent() {
               notes={store.notes}
               flashcards={store.flashcards}
               onAddSubject={store.addSubject}
+              onUpdateSubject={store.updateSubject}
               onDeleteSubject={store.deleteSubject}
               onAddNote={store.addNote}
               onUpdateNote={store.updateNote}
+              onDeleteNote={store.deleteNote}
             />
           )}
 

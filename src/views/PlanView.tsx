@@ -21,6 +21,7 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
+import { validateSubjectName } from '../api/subjectApi';
 import { 
   Plus, 
   Calendar as CalendarIcon, 
@@ -35,7 +36,8 @@ import {
   Layers, 
   Target, 
   BookOpen, 
-  ArrowUpRight 
+  ArrowUpRight, 
+  Edit3 
 } from 'lucide-react';
 
 interface PlanViewProps {
@@ -43,8 +45,10 @@ interface PlanViewProps {
   subjects: Subject[];
   onAddTask: (task: Omit<Task, 'id' | 'createdAt'>) => void;
   onToggleTask: (id: string) => void;
+  onUpdateTask?: (id: string, updates: Partial<Task>) => Promise<void> | void;
   onDeleteTask: (id: string) => void;
   onAddSubject: (subject: Omit<Subject, 'id' | 'createdAt'>) => void;
+  onUpdateSubject?: (id: string, updates: Partial<Subject>) => Promise<void> | void;
   onDeleteSubject?: (id: string) => Promise<void> | void;
 }
 
@@ -73,13 +77,20 @@ export const PlanView: React.FC<PlanViewProps> = ({
   subjects,
   onAddTask,
   onToggleTask,
+  onUpdateTask,
   onDeleteTask,
   onAddSubject,
+  onUpdateSubject,
 }) => {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [filter, setFilter] = useState<'all' | 'todo' | 'completed'>('all');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+
+  // Edit IDs
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [subjectFormError, setSubjectFormError] = useState<string | null>(null);
 
   // Task Form State
   const [title, setTitle] = useState('');
@@ -112,42 +123,115 @@ export const PlanView: React.FC<PlanViewProps> = ({
     return true;
   });
 
-  const handleTaskSubmit = (e: React.FormEvent) => {
+  const handleOpenCreateTask = () => {
+    setEditingTaskId(null);
+    setTitle('');
+    setDescription('');
+    setSubjectId('');
+    setPriority('medium');
+    setEstimatedMinutes(45);
+    setDueDate(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    setIsTaskModalOpen(true);
+  };
+
+  const handleOpenEditTask = (t: Task) => {
+    setEditingTaskId(t.id);
+    setTitle(t.title);
+    setDescription(t.description || '');
+    setSubjectId(t.subjectId || '');
+    setPriority(t.priority);
+    setEstimatedMinutes(t.estimatedMinutes);
+    setDueDate(t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : '');
+    setIsTaskModalOpen(true);
+  };
+
+  const handleOpenCreateSubject = () => {
+    setEditingSubjectId(null);
+    setSubName('');
+    setSubCode('');
+    setSubConfidence(70);
+    setSubColor('var(--accent-blue)');
+    setSubjectFormError(null);
+    setIsSubjectModalOpen(true);
+  };
+
+  const handleOpenEditSubject = (s: { subjectId: string; name: string; code?: string; color: string; confidenceRating: number }) => {
+    setEditingSubjectId(s.subjectId);
+    setSubName(s.name);
+    setSubCode(s.code || '');
+    setSubConfidence(s.confidenceRating);
+    setSubColor(s.color || 'var(--accent-blue)');
+    setSubjectFormError(null);
+    setIsSubjectModalOpen(true);
+  };
+
+  const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    onAddTask({
-      title,
-      description,
-      subjectId: subjectId || undefined,
-      priority,
-      estimatedMinutes: Number(estimatedMinutes) || 30,
-      completedMinutes: 0,
-      status: 'todo',
-      dueDate: dueDate ? new Date(`${dueDate}T23:59:59`).getTime() : undefined,
-    });
+    if (editingTaskId && onUpdateTask) {
+      await onUpdateTask(editingTaskId, {
+        title,
+        description: description || undefined,
+        subjectId: subjectId || undefined,
+        priority,
+        estimatedMinutes: Number(estimatedMinutes) || 30,
+        dueDate: dueDate ? new Date(`${dueDate}T23:59:59`).getTime() : undefined,
+      });
+    } else {
+      onAddTask({
+        title,
+        description,
+        subjectId: subjectId || undefined,
+        priority,
+        estimatedMinutes: Number(estimatedMinutes) || 30,
+        completedMinutes: 0,
+        status: 'todo',
+        dueDate: dueDate ? new Date(`${dueDate}T23:59:59`).getTime() : undefined,
+      });
+    }
 
     setTitle('');
     setDescription('');
     setSubjectId('');
-    setDueDate(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    setEditingTaskId(null);
     setIsTaskModalOpen(false);
   };
 
-  const handleSubjectSubmit = (e: React.FormEvent) => {
+  const handleSubjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subName.trim()) return;
+    if (!subName.trim()) {
+      setSubjectFormError('Subject name cannot be empty');
+      return;
+    }
 
-    onAddSubject({
-      name: subName,
-      code: subCode || undefined,
-      color: subColor,
-      confidenceRating: Number(subConfidence) || 70,
-    });
+    try {
+      setSubjectFormError(null);
+      await validateSubjectName(subName, editingSubjectId || undefined);
 
-    setSubName('');
-    setSubCode('');
-    setIsSubjectModalOpen(false);
+      if (editingSubjectId && onUpdateSubject) {
+        await onUpdateSubject(editingSubjectId, {
+          name: subName,
+          code: subCode || undefined,
+          color: subColor,
+          confidenceRating: Number(subConfidence) || 70,
+        });
+      } else {
+        onAddSubject({
+          name: subName,
+          code: subCode || undefined,
+          color: subColor,
+          confidenceRating: Number(subConfidence) || 70,
+        });
+      }
+
+      setSubName('');
+      setSubCode('');
+      setEditingSubjectId(null);
+      setIsSubjectModalOpen(false);
+    } catch (err: any) {
+      setSubjectFormError(err.message || 'Validation error');
+    }
   };
 
   return (
@@ -700,11 +784,11 @@ export const PlanView: React.FC<PlanViewProps> = ({
         </div>
       </motion.section>
 
-      {/* Task Creation Modal */}
+      {/* Task Creation / Edit Modal */}
       <Modal
         isOpen={isTaskModalOpen}
         onClose={() => setIsTaskModalOpen(false)}
-        title="Create New Study Task"
+        title={editingTaskId ? 'Edit Task' : 'Create New Study Task'}
       >
         <form onSubmit={handleTaskSubmit} className="space-y-4">
           <div>
@@ -790,19 +874,25 @@ export const PlanView: React.FC<PlanViewProps> = ({
               Cancel
             </Button>
             <Button variant="primary" size="md" type="submit">
-              Save Task
+              {editingTaskId ? 'Save Changes' : 'Create Task'}
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Subject Creation Modal */}
+      {/* Subject Creation / Edit Modal */}
       <Modal
         isOpen={isSubjectModalOpen}
         onClose={() => setIsSubjectModalOpen(false)}
-        title="Add New Academic Subject"
+        title={editingSubjectId ? 'Edit Academic Subject' : 'Add New Academic Subject'}
       >
         <form onSubmit={handleSubjectSubmit} className="space-y-4">
+          {subjectFormError && (
+            <div className="p-3 text-xs text-[var(--accent-rose)] bg-[var(--accent-rose)]/10 border border-[var(--accent-rose)]/30 rounded-xl">
+              {subjectFormError}
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Subject Name *</label>
             <input
@@ -845,7 +935,7 @@ export const PlanView: React.FC<PlanViewProps> = ({
               Cancel
             </Button>
             <Button variant="primary" size="md" type="submit">
-              Create Subject
+              {editingSubjectId ? 'Save Changes' : 'Create Subject'}
             </Button>
           </div>
         </form>

@@ -32,3 +32,12 @@ export async function updateNote(id: string, updates: Partial<Note>): Promise<vo
     throw err instanceof NotFoundError ? err : new StorageError('updateNote', err);
   }
 }
+
+export async function deleteNote(id: string): Promise<void> {
+  try {
+    await db.notes.delete(id);
+  } catch (err) {
+    logger.error(`Failed to delete note with id ${id}`, err);
+    throw new StorageError('deleteNote', err);
+  }
+}
