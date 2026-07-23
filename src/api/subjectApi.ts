@@ -3,6 +3,18 @@ import { Subject } from '../types';
 import { logger } from '../services/logger';
 import { StorageError } from './errors';
 
+export interface SubjectReferences {
+  tasks: number;
+  notes: number;
+  flashcards: number;
+  sessions: number;
+  topics: number;
+  goals: number;
+  aiConversations: number;
+  totalReferences: number;
+  isDeletable: boolean;
+}
+
 export async function addSubject(subject: Subject): Promise<void> {
   try {
     await db.subjects.add(subject);
@@ -18,5 +30,50 @@ export async function getSubjects(): Promise<Subject[]> {
   } catch (err) {
     logger.error('Failed to fetch subjects', err);
     throw new StorageError('getSubjects', err);
+  }
+}
+
+export async function checkSubjectReferences(subjectId: string): Promise<SubjectReferences> {
+  try {
+    const tasks = await db.tasks.where('subjectId').equals(subjectId).count();
+    const notes = await db.notes.where('subjectId').equals(subjectId).count();
+    const flashcards = await db.flashcards.where('subjectId').equals(subjectId).count();
+    const sessions = await db.sessions.where('subjectId').equals(subjectId).count();
+    const topics = await db.topics.where('subjectId').equals(subjectId).count();
+    const goals = await db.goals.where('subjectId').equals(subjectId).count();
+    const aiConversations = await db.ai_conversations.where('subjectId').equals(subjectId).count();
+
+    const totalReferences =
+      tasks + notes + flashcards + sessions + topics + goals + aiConversations;
+
+    return {
+      tasks,
+      notes,
+      flashcards,
+      sessions,
+      topics,
+      goals,
+      aiConversations,
+      totalReferences,
+      isDeletable: totalReferences === 0,
+    };
+  } catch (err) {
+    logger.error('Failed to check subject references', err);
+    throw new StorageError('checkSubjectReferences', err);
+  }
+}
+
+export async function deleteSubject(subjectId: string): Promise<void> {
+  try {
+    const refs = await checkSubjectReferences(subjectId);
+    if (!refs.isDeletable) {
+      throw new Error(
+        `Subject cannot be deleted because it is still referenced by ${refs.totalReferences} item(s).`
+      );
+    }
+    await db.subjects.delete(subjectId);
+  } catch (err) {
+    logger.error('Failed to delete subject', err);
+    throw new StorageError('deleteSubject', err);
   }
 }

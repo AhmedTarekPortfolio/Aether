@@ -13,6 +13,10 @@ import {
   formatRelativeTimestamp 
 } from '../services/workspaceMetrics';
 import { 
+  checkSubjectReferences, 
+  SubjectReferences 
+} from '../api/subjectApi';
+import { 
   BookOpen, 
   FileText, 
   Plus, 
@@ -27,7 +31,9 @@ import {
   AlertCircle, 
   ArrowRight, 
   ListTree, 
-  Tag 
+  Tag, 
+  Trash2, 
+  AlertTriangle 
 } from 'lucide-react';
 
 interface WorkspaceViewProps {
@@ -36,6 +42,7 @@ interface WorkspaceViewProps {
   notes: Note[];
   flashcards: Flashcard[];
   onAddSubject: (subject: Omit<Subject, 'id' | 'createdAt'>) => void;
+  onDeleteSubject?: (id: string) => Promise<void> | void;
   onAddNote: (note: Omit<Note, 'id' | 'updatedAt'>) => void;
   onUpdateNote: (id: string, content: string, title?: string) => void;
 }
@@ -66,6 +73,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   notes,
   flashcards,
   onAddSubject,
+  onDeleteSubject,
   onAddNote,
   onUpdateNote,
 }) => {
@@ -80,6 +88,20 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+
+  // Subject Deletion State
+  const [subjectToDelete, setSubjectToDelete] = useState<Subject | null>(null);
+  const [deleteReferences, setDeleteReferences] = useState<SubjectReferences | null>(null);
+  const [isDeleteSubjectModalOpen, setIsDeleteSubjectModalOpen] = useState(false);
+
+  const handleInitiateSubjectDelete = async (subjectId: string) => {
+    const sub = subjects.find((s) => s.id === subjectId);
+    if (!sub) return;
+    const refs = await checkSubjectReferences(subjectId);
+    setSubjectToDelete(sub);
+    setDeleteReferences(refs);
+    setIsDeleteSubjectModalOpen(true);
+  };
 
   // New Subject Form State
   const [newSubName, setNewSubName] = useState('');
@@ -285,9 +307,21 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     >
                       {sub.code || sub.name}
                     </span>
-                    <Badge variant="gray" size="sm">
-                      Target: {sub.targetGrade || 'A'}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="gray" size="sm">
+                        Target: {sub.targetGrade || 'A'}
+                      </Badge>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleInitiateSubjectDelete(sub.id);
+                        }}
+                        title="Delete Subject"
+                        className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-rose)] rounded-lg hover:bg-[var(--accent-rose)]/10 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div>
@@ -830,6 +864,106 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Subject Modal */}
+      <Modal
+        isOpen={isDeleteSubjectModalOpen}
+        onClose={() => setIsDeleteSubjectModalOpen(false)}
+        title={
+          deleteReferences && !deleteReferences.isDeletable ? (
+            <span className="text-[var(--accent-rose)] font-bold flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              Cannot Delete Subject
+            </span>
+          ) : (
+            <span>Confirm Subject Deletion</span>
+          )
+        }
+      >
+        {deleteReferences && !deleteReferences.isDeletable ? (
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+              This subject cannot be deleted because it is still being used. Remove or reassign all associated items before deleting it.
+            </p>
+
+            <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-glass)] space-y-2">
+              <div className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                Blocking References:
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {deleteReferences.tasks > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.tasks} Task(s)
+                  </Badge>
+                )}
+                {deleteReferences.notes > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.notes} Note(s)
+                  </Badge>
+                )}
+                {deleteReferences.flashcards > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.flashcards} Flashcard(s)
+                  </Badge>
+                )}
+                {deleteReferences.sessions > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.sessions} Focus Session(s)
+                  </Badge>
+                )}
+                {deleteReferences.topics > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.topics} Topic(s)
+                  </Badge>
+                )}
+                {deleteReferences.goals > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.goals} Goal(s)
+                  </Badge>
+                )}
+                {deleteReferences.aiConversations > 0 && (
+                  <Badge variant="rose" size="sm">
+                    {deleteReferences.aiConversations} AI Chat(s)
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="primary" size="md" onClick={() => setIsDeleteSubjectModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--text-primary)]">
+              Delete subject <span className="font-bold text-[var(--accent-blue)]">'{subjectToDelete?.name}'</span>?
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">
+              This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-glass)]">
+              <Button variant="ghost" size="md" onClick={() => setIsDeleteSubjectModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                onClick={async () => {
+                  if (subjectToDelete && onDeleteSubject) {
+                    await onDeleteSubject(subjectToDelete.id);
+                  }
+                  setIsDeleteSubjectModalOpen(false);
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </motion.div>
   );

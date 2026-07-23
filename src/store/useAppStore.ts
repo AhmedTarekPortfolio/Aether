@@ -139,6 +139,10 @@ export function useAetherStore() {
     await api.addSubject(newSubject);
   };
 
+  const deleteSubject = async (subjectId: string) => {
+    await api.deleteSubject(subjectId);
+  };
+
   // Note Mutations via API layer
   const addNote = async (note: Omit<Note, 'id' | 'userId' | 'updatedAt'>) => {
     const newNote: Note = {
@@ -258,6 +262,7 @@ export function useAetherStore() {
     toggleTaskStatus,
     deleteTask,
     addSubject: addSubject as (subject: Omit<Subject, 'id' | 'createdAt'>) => Promise<void>,
+    deleteSubject,
     addNote: addNote as (note: Omit<Note, 'id' | 'updatedAt'>) => Promise<void>,
     updateNote,
     logFocusSession: logFocusSession as (session: Omit<Session, 'id' | 'completedAt'>) => Promise<void>,

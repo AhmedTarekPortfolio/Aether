@@ -45,6 +45,7 @@ interface PlanViewProps {
   onToggleTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
   onAddSubject: (subject: Omit<Subject, 'id' | 'createdAt'>) => void;
+  onDeleteSubject?: (id: string) => Promise<void> | void;
 }
 
 // Framer Motion Animation Variants
