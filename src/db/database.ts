@@ -1,3 +1,18 @@
+/**
+ * Aether IndexedDB Database Definition & Migration History
+ *
+ * Version History:
+ * - Version 1: Initial MVP Schema (subjects, tasks, focusSessions, userProfile)
+ * - Version 2: Extended Schema (added topics, notes, flashcards, aiInteractions, notifications)
+ * - Version 3: 3NF Normalized Architecture (14 tables: users, settings, subjects, topics,
+ *              tasks, notes, flashcards, sessions, goals, ai_conversations, statistics,
+ *              achievement_definitions, user_achievements, notifications)
+ *
+ * Data Access Architecture:
+ * Mutations & direct table queries should be accessed through the Repository API Layer (`src/api/*`),
+ * not directly through `db.table.*`, except for reactive `useLiveQuery` subscriptions in `useAppStore.ts`.
+ */
+
 import Dexie, { Table } from 'dexie';
 import { 
   User,

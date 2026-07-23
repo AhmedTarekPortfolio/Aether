@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAetherStore } from './store/useAppStore';
+import { useTheme } from './hooks/useTheme';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopHeader } from './components/layout/TopHeader';
 import { CommandPalette } from './components/ui/CommandPalette';
@@ -18,23 +19,8 @@ export function AppContent() {
   const store = useAetherStore();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Synchronize HTML class with active theme
-  useEffect(() => {
-    const theme = store.userProfile?.theme || 'dark';
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-    }
-  }, [store.userProfile?.theme]);
-
-  const handleToggleTheme = async () => {
-    const currentTheme = store.userProfile?.theme || 'dark';
-    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    await store.updateProfile({ theme: nextTheme });
-  };
+  // Synchronize HTML class with active theme using extracted useTheme hook
+  const { toggleTheme } = useTheme(store.userProfile || null, store.updateProfile);
 
   const handleStartFocusWithTask = (taskId?: string) => {
     if (taskId) store.setActiveFocusTaskId(taskId);
@@ -52,7 +38,7 @@ export function AppContent() {
         onOpenCommandPalette={() => store.setCommandPaletteOpen(true)}
         focusMinutesToday={totalFocusMinutesToday}
         userProfile={store.userProfile || null}
-        onToggleTheme={handleToggleTheme}
+        onToggleTheme={toggleTheme}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
@@ -65,7 +51,7 @@ export function AppContent() {
           notifications={store.notifications}
           onOpenCommandPalette={() => store.setCommandPaletteOpen(true)}
           onQuickTask={() => store.setActiveTab('plan')}
-          onToggleTheme={handleToggleTheme}
+          onToggleTheme={toggleTheme}
           onMarkNotificationRead={store.markNotificationAsRead}
           onMarkAllNotificationsRead={store.markAllNotificationsAsRead}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
