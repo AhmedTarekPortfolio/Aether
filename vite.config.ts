@@ -20,4 +20,22 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    environment: 'jsdom',
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'electron/__tests__/**/*.ts',
+      'server/__tests__/**/*.ts',
+    ],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/dist-electron/**',
+      '**/dist-desktop/**',
+      '**/dist-installer/**',
+      '**/dist-win/**',
+      '**/release/**',
+      '**/coverage/**',
+    ],
+  },
 });
