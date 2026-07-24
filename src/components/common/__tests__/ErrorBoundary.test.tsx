@@ -18,9 +18,9 @@ describe('ErrorBoundary Component', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText('Something Went Wrong')).toBeInTheDocument();
+    expect(screen.getByText('Aether could not start')).toBeInTheDocument();
     expect(
-      screen.getByText(/Aether encountered an unexpected application runtime error/i)
+      screen.getByText(/An unexpected renderer error occurred/i)
     ).toBeInTheDocument();
 
     expect(loggerSpy).toHaveBeenCalled();

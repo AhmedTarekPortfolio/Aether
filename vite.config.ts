@@ -6,9 +6,18 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: './',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  server: {
+    proxy: {
+      '/api/ai': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
 });

@@ -5,7 +5,15 @@ node_modules
 # Production build
 dist
 dist-ssr
+dist-desktop
+dist-electron
+dist-installer
+dist-win
+release
 *.local
+
+# Agent logs
+.agent/api-models-*
 
 # Diff files
 *.diff

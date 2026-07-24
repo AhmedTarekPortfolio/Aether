@@ -124,19 +124,59 @@ export interface Goal {
   completedAt?: number | null;
 }
 
+export type AIProviderType =
+  | 'local'
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'openrouter'
+  | 'ollama'
+  | 'lmstudio'
+  | 'openai_compatible'
+  | 'nvidia_nim';
+
+export interface AIProviderProfile {
+  id: string;
+  name: string;
+  type: AIProviderType;
+  baseUrl?: string;
+  endpointPath?: string;
+  modelId: string;
+  temperature: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  stream?: boolean;
+  customSystemInstructions?: string;
+  rememberApiKey: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AIProviderCredentials {
+  apiKey?: string;
+  organizationId?: string;
+  projectId?: string;
+}
+
 export interface AIConversation {
   id: string;
   userId?: string;
   subjectId?: string | null;
   taskId?: string | null;
-  role: 'user' | 'assistant';
-  mode: 'chat' | 'tutor' | 'writer' | 'code' | 'quiz';
-  content: string;
+  role?: 'user' | 'assistant';
+  mode: 'chat' | 'tutor' | 'writer' | 'code' | 'quiz' | 'ask_resources' | 'explain' | 'summarize';
+  content?: string;
+  prompt?: string;
+  response?: string;
   timestamp: number;
   explanation?: {
     confidence: number;
     factors: string[];
   };
+  providerId?: string;
+  providerName?: string;
+  modelId?: string;
+  generationStatus?: 'complete' | 'stopped' | 'failed';
 }
 
 // Backward compatibility alias for UI views

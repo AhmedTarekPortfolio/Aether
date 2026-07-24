@@ -5,6 +5,7 @@ import { Badge } from '../components/ui/Badge';
 import { UserProfile } from '../types';
 import { db } from '../db/database';
 import { User, Settings as SettingsIcon, Database, Download, Key, ShieldCheck, Lock } from 'lucide-react';
+import { ModelSettingsModal } from '../components/ai/ModelSettingsModal';
 
 interface SettingsViewProps {
   userProfile: UserProfile | null;
@@ -16,6 +17,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateProfile,
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'system'>('profile');
+  const [isModelSettingsOpen, setIsModelSettingsOpen] = useState(false);
 
   // Profile Form State
   const [name, setName] = useState(userProfile?.name || 'Alex Rivera');
@@ -77,6 +79,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onClick={() => setActiveTab('system')}
         >
           System Preferences & Data
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Key className="w-4 h-4" />}
+          onClick={() => setIsModelSettingsOpen(true)}
+        >
+          API & Models
         </Button>
       </div>
 
@@ -207,6 +217,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </Card>
         </div>
       )}
+      <ModelSettingsModal
+        isOpen={isModelSettingsOpen}
+        onClose={() => setIsModelSettingsOpen(false)}
+      />
     </div>
   );
 };
