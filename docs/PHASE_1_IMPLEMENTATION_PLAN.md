@@ -1,351 +1,410 @@
-# Phase 1 Implementation Plan — Data Foundation, Schema Migration & Conversation Persistence Redesign
+# Phase 1 Implementation Plan — Repository-Grounded Persistence Architecture, Backup Engine & Data Hardening
 
 ## 1. Executive Summary
 
-### Primary Objective
-> Preserve all verified Phase 0 behavior while safely upgrading Aether’s data model, migration system, conversation persistence, and backup compatibility.
+### Architectural Purpose & Primary Objective
+> Preserve all verified Phase 0 behavior while hardening Aether’s actual Version 3 IndexedDB data model, establishing a versioned backup export/import engine, and ensuring durable conversation persistence.
 
-### Architectural Purpose & Scope
-Phase 1 establishes a robust, type-safe, versioned persistence layer for the Aether Study Productivity Workspace across Web and Windows Desktop environments. By introducing Dexie Schema Version 4, a normalized conversation/message data model, transactional migration pipelines, and versioned workspace backup export/import handlers, Phase 1 resolves structural persistence limitations without altering UI presentation or breaking verified Phase 0 AI transport channels.
+This revised Phase 1 plan replaces all speculative schema assumptions with empirical evidence extracted directly from `src/db/database.ts`, `src/types/index.ts`, `src/api/*`, and `src/views/SettingsView.tsx`. 
 
-### Invariants — What Remains Unchanged
-- **Web & Desktop Parity**: Unified data layer supporting browser IndexedDB and Electron desktop shell.
-- **IPC & AI Networking Isolation**: Remote provider calls remain inside Electron Main; Renderer accesses AI via secure preload bridge.
-- **Credential Storage Security**: Secrets remain in OS Vault via `safeStorage` (Electron) or local server store (Express). No API keys in backups or IndexedDB.
-- **Zero UI Redesign**: Preserves current layout, design tokens, and CSS.
-
-### Explicit Phase 1 Exclusions
-- UI redesign or layout modifications.
-- New LLM provider integrations or provider consolidation.
-- Vector search, embeddings, or automated resource indexing.
-- Citations presentation UI or user-facing source footnotes.
-- Token billing, pricing tier, or monetary cost tracking.
-- Proposed AI actions or automated workspace mutations.
+### Key Discoveries & Strategic Decisions
+1. **Actual Database Identity**: The IndexedDB database name is `AetherPhase1DB` (implemented in `src/db/database.ts`), running on **Dexie Version 3** with **14 normalized tables**.
+2. **Conversation Persistence Model**: `ai_conversations` stores flat `AIConversation` interaction records (not an embedded `messages[]` array). **Strategy A (Preserving the Flat Model)** is chosen to eliminate schema migration risks while fully satisfying AI history requirements.
+3. **Dexie Version 4 Migration Verdict**: **No Dexie Schema Version 4 is required**. The existing Version 3 schema already defines all 14 necessary tables. Avoiding an unnecessary schema upgrade eliminates database rollback risks.
+4. **Current Backup State**: `SettingsView.tsx` currently contains an inline unversioned export helper that covers only 8 of the 14 database tables and lacks an import/restore feature. `src/services/backupService.ts` does not yet exist.
+5. **Phase 1 Implementation Core**: Phase 1 will extract backup logic into a dedicated service, introduce a complete 14-table Version 2 Backup Envelope, implement a transactional Restore Engine with backward compatibility for legacy exports, and harden `generationStatus` handling.
 
 ---
 
-## 2. Current-State Persistence Inventory
+## 2. Verified Repository Baseline
 
-Based on authoritative code inspection of `src/db/index.ts`, `src/db/schema.ts`, `src/db/migration.ts`, `server/services/credentialStore.ts`, and `electron/services/credentials/credential-service.ts`:
-
-### Active Database & Version
-- **Database Name**: `AetherDatabase`
-- **Current Schema Version**: Version 3
-- **ORM / Driver**: Dexie.js (`IndexedDB`)
-
-### Existing Schema Version 3 Tables & Indexes
-1. `subjects`: `++id, &name, createdAt, updatedAt`
-2. `tasks`: `++id, subjectId, title, status, dueDate, priority, createdAt, updatedAt`
-3. `notes`: `++id, subjectId, title, isPinned, createdAt, updatedAt`
-4. `resources`: `++id, subjectId, title, type, url, createdAt, updatedAt`
-5. `plans`: `++id, subjectId, title, status, startDate, endDate, createdAt, updatedAt`
-6. `focusSessions`: `++id, subjectId, taskId, startTime, duration, status, createdAt`
-7. `aiConversations`: `++id, title, mode, subjectId, createdAt, updatedAt`
-
-### Current Limitations Identified
-- **Flat AI Conversations**: `aiConversations` currently embeds messages inside a JSON array property (`messages: Array<{ role, content, timestamp }>`) rather than a normalized relational `aiMessages` table.
-- **Lack of Streaming Teardown Status**: Interrupted or failed AI streams leave unflagged transient records in memory/storage.
-- **Unversioned Workspace Backups**: JSON backup exports contain entity dumps without explicit schema-version envelope headers.
+- **Repository**: `AhmedTarekPortfolio/Aether`
+- **Active Branch**: `main`
+- **Verified Commit**: `4bac10a72bf20f569eca5d4fb599f7ba855a16cd` (`docs: close Phase 0 verification gaps`)
+- **Annotated Baseline Tag**: `phase-0-baseline` (pointing to `4bac10a`)
+- **Working Tree**: Clean (`0 left, 0 right` divergence from `origin/main`)
+- **Automated Test Gate**: 31 test files, 168 tests passed (100% pass rate)
+- **Build Gates**: Web build (`npm run build`) and Electron build (`npm run build:electron`) pass cleanly.
 
 ---
 
-## 3. Phase 1 Target Schema (Dexie Version 4)
-
-The Phase 1 target data model introduces normalized `aiMessages` and application `settings` while extending core entities with audit timestamps and relational integrity rules.
+## 3. Actual Persistence Architecture
 
 ```mermaid
-erDiagram
-    SUBJECTS ||--o{ TASKS : contains
-    SUBJECTS ||--o{ NOTES : contains
-    SUBJECTS ||--o{ RESOURCES : contains
-    SUBJECTS ||--o{ PLANS : contains
-    SUBJECTS ||--o{ FOCUS_SESSIONS : contains
-    SUBJECTS ||--o{ AI_CONVERSATIONS : context
-    AI_CONVERSATIONS ||--|{ AI_MESSAGES : contains
+flowchart TD
+    subgraph UI ["React 19 View Layer"]
+        Views["Dashboard / Workspace / Focus / AIAssistant / Settings"]
+        Store["src/store/useAppStore.ts (useLiveQuery)"]
+    end
 
-    SUBJECTS {
-        string id PK
-        string name UK
-        string color
-        number createdAt
-        number updatedAt
-    }
-    TASKS {
-        string id PK
-        string subjectId FK
-        string title
-        string status
-        number dueDate
-        string priority
-        number createdAt
-        number updatedAt
-    }
-    NOTES {
-        string id PK
-        string subjectId FK
-        string title
-        string content
-        boolean isPinned
-        number createdAt
-        number updatedAt
-    }
-    RESOURCES {
-        string id PK
-        string subjectId FK
-        string title
-        string type
-        string url
-        number createdAt
-        number updatedAt
-    }
-    PLANS {
-        string id PK
-        string subjectId FK
-        string title
-        string status
-        number startDate
-        number endDate
-        number createdAt
-        number updatedAt
-    }
-    FOCUS_SESSIONS {
-        string id PK
-        string subjectId FK
-        string taskId FK
-        number startTime
-        number duration
-        string status
-        number createdAt
-    }
-    AI_CONVERSATIONS {
-        string id PK
-        string title
-        string mode
-        string subjectId FK
-        string providerId
-        string modelId
-        number createdAt
-        number updatedAt
-    }
-    AI_MESSAGES {
-        string id PK
-        string conversationId FK
-        string role
-        string content
-        string reasoning
-        string status
-        number tokenCountPlaceholder
-        number createdAt
-    }
-    SETTINGS {
-        string key PK
-        string value
-        number updatedAt
-    }
+    subgraph API ["Repository API Layer (src/api/*)"]
+        UserAPI["userApi.ts"]
+        SettingsAPI["settingsApi.ts"]
+        SubjectAPI["subjectApi.ts"]
+        TaskAPI["taskApi.ts"]
+        NoteAPI["noteApi.ts"]
+        AIConvAPI["aiConversationApi.ts"]
+        OtherAPIs["topicApi, flashcardApi, sessionApi, goalApi, etc."]
+    end
+
+    subgraph Database ["IndexedDB Storage (src/db/database.ts)"]
+        DexieDB["AetherDatabase extends Dexie ('AetherPhase1DB') - Version 3"]
+        Tables["14 Normalized Tables (users, settings, subjects, topics, tasks, notes, flashcards, sessions, goals, ai_conversations, statistics, achievement_definitions, user_achievements, notifications)"]
+    end
+
+    subgraph CredentialVault ["Platform Credential Storage"]
+        ElectronVault["Windows safeStorage (electron/services/credentials)"]
+        ExpressVault["Server JSON Vault (server/services/credentialStore)"]
+    end
+
+    Views --> Store
+    Store --> API
+    API --> DexieDB
+    DexieDB --> Tables
 ```
 
-### Table Definitions & Primary Key Strategy
-All new and migrated entities utilize string UUIDs (`&id`) for robust multi-platform sync and deterministic backup deduplication.
-
-1. **`subjects`**: `&id, &name, createdAt, updatedAt`
-2. **`tasks`**: `&id, subjectId, status, dueDate, priority, createdAt, updatedAt`
-3. **`notes`**: `&id, subjectId, title, isPinned, createdAt, updatedAt`
-4. **`resources`**: `&id, subjectId, title, type, createdAt, updatedAt`
-5. **`plans`**: `&id, subjectId, status, startDate, endDate, createdAt, updatedAt`
-6. **`focusSessions`**: `&id, subjectId, taskId, startTime, status, createdAt`
-7. **`aiConversations`**: `&id, subjectId, mode, providerId, modelId, createdAt, updatedAt`
-8. **`aiMessages`**: `&id, conversationId, role, status, createdAt`
-9. **`settings`**: `&key, updatedAt`
+### Core Architecture Characteristics
+- **Single Source of Truth**: `src/db/database.ts` instantiates `export const db = new AetherDatabase()`.
+- **API Wrapper Boundary**: UI components invoke mutations through `src/api/*` functions rather than direct `db.table` calls.
+- **Reactive Subscriptions**: Views read live data using Dexie's `useLiveQuery` in `src/store/useAppStore.ts`.
+- **Platform Credential Isolation**: API keys and secrets are stored in platform vaults (`safeStorage` on Electron, `credentialStore` on Express loopback), completely isolated from IndexedDB tables.
 
 ---
 
-## 4. Conversation & Message Persistence Redesign
+## 4. Complete Version 3 Schema Inventory (14 Tables)
 
-### Entity Definitions
+Dexie Version 3 (`this.version(3).stores({...})` in `src/db/database.ts`) defines 14 tables:
 
-#### `AIConversation`
-- `id`: string (UUID, Primary Key)
-- `title`: string (Human-readable conversation topic)
-- `mode`: string (`tutor` | `study_planner` | `quiz_gen` | `summarizer`)
-- `subjectId`: string | null (Optional link to Subject)
-- `providerId`: string (ID of provider used, e.g., `openai`, `nvidia_nim`)
-- `modelId`: string (Model identifier, e.g., `gpt-4o`, `deepseek-v3`)
-- `createdAt`: number (Unix timestamp ms)
-- `updatedAt`: number (Unix timestamp ms)
+| Table Name | TypeScript Type | Primary Key | Index Declaration (`.stores()`) | Description |
+|---|---|---|---|---|
+| `users` | `User` | `id` (String) | `id, &email` | Primary user identity profile |
+| `settings` | `Settings` | `id` (String) | `id, &userId` | App preferences, theme, study goals |
+| `subjects` | `Subject` | `id` (String) | `id, userId, name, confidenceRating` | Study subjects/courses |
+| `topics` | `Topic` | `id` (String) | `id, subjectId, title, masteryLevel` | Sub-topics under subjects |
+| `tasks` | `Task` | `id` (String) | `id, userId, subjectId, priority, status, dueDate` | Tasks and action items |
+| `notes` | `Note` | `id` (String) | `id, userId, subjectId, topicId, title, updatedAt` | Markdown & math study notes |
+| `flashcards` | `Flashcard` | `id` (String) | `id, userId, subjectId, topicId, nextReviewDate` | Spaced-repetition flashcards |
+| `sessions` | `Session` | `id` (String) | `id, userId, subjectId, taskId, completedAt` | Focus/pomodoro study sessions |
+| `goals` | `Goal` | `id` (String) | `id, userId, subjectId, status` | Target study goals |
+| `ai_conversations` | `AIConversation` | `id` (String) | `id, userId, subjectId, mode, timestamp` | AI interaction records |
+| `statistics` | `Statistic` | `id` (String) | `id, userId, [userId+metricKey+periodStart]` | Pre-computed workspace metrics |
+| `achievement_definitions` | `AchievementDefinition` | `id` (String) | `id, &key` | Master list of achievements |
+| `user_achievements` | `UserAchievement` | `id` (String) | `id, userId, [userId+achievementId]` | User unlocked achievements |
+| `notifications` | `NotificationItem` | `id` (String) | `id, userId, type, createdAt` | System & deadline alerts |
 
-#### `AIMessage`
-- `id`: string (UUID, Primary Key)
-- `conversationId`: string (Foreign Key -> `aiConversations.id`)
-- `role`: string (`user` | `assistant` | `system`)
-- `content`: string (Markdown content text)
-- `reasoning`: string | null (Optional reasoning fragment for reasoning models)
-- `status`: string (`completed` | `streaming` | `interrupted` | `failed`)
-- `groundingResourceIds`: string[] (Array of referenced resource IDs)
-- `citationsPlaceholder`: Array<{ sourceId: string; span: [number, number] }> | null (Placeholder for future citations)
-- `usagePlaceholder`: { promptTokens?: number; completionTokens?: number } | null (Placeholder for token count)
-- `createdAt`: number (Unix timestamp ms)
-
-### Lifecycle Rules & State Transitions
-- **New Conversation**: Created upon first user query in a session.
-- **Message Append**: User message inserted immediately with `status: 'completed'`. Assistant message inserted with `status: 'streaming'`.
-- **Stream Complete**: Assistant message updated to `status: 'completed'` with final `content` and `reasoning`.
-- **Stream Interrupted / App Restart**: On startup, any message with `status: 'streaming'` is automatically updated to `status: 'interrupted'`.
+*Note: Legacy Version 1 & 2 tables (`focusSessions`, `aiInteractions`, `userProfile`) are explicitly dropped (`null`) in Version 3.*
 
 ---
 
-## 5. Dexie Version Upgrade & Migration Strategy
+## 5. Table-by-Table Writer and Reader Map
 
-### Proposed Upgrade: Version 3 -> Version 4
+| Table Name | Reader Files | Writer / Mutation Files | Wrapper APIs (`src/api/`) |
+|---|---|---|---|
+| `users` | `useAppStore.ts`, `database.ts` | `database.ts`, `userApi.ts` | `userApi.ts` |
+| `settings` | `useAppStore.ts`, `database.ts` | `database.ts`, `settingsApi.ts` | `settingsApi.ts` |
+| `subjects` | `useAppStore.ts`, `WorkspaceView.tsx`, `PlanView.tsx` | `database.ts`, `subjectApi.ts` | `subjectApi.ts` |
+| `topics` | `useAppStore.ts`, `WorkspaceView.tsx` | `database.ts`, `topicApi.ts` | `topicApi.ts` |
+| `tasks` | `useAppStore.ts`, `HomeView.tsx`, `PlanView.tsx` | `database.ts`, `taskApi.ts` | `taskApi.ts` |
+| `notes` | `useAppStore.ts`, `WorkspaceView.tsx` | `database.ts`, `noteApi.ts` | `noteApi.ts` |
+| `flashcards` | `useAppStore.ts`, `WorkspaceView.tsx` | `database.ts`, `flashcardApi.ts` | `flashcardApi.ts` |
+| `sessions` | `useAppStore.ts`, `FocusView.tsx`, `InsightsView.tsx` | `database.ts`, `sessionApi.ts` | `sessionApi.ts` |
+| `goals` | `useAppStore.ts`, `PlanView.tsx` | `database.ts`, `goalApi.ts` | `goalApi.ts` |
+| `ai_conversations` | `useAppStore.ts`, `AIAssistantView.tsx` | `database.ts`, `aiConversationApi.ts` | `aiConversationApi.ts` |
+| `statistics` | `useAppStore.ts`, `InsightsView.tsx` | `database.ts`, `statisticApi.ts` | `statisticApi.ts` |
+| `achievement_definitions` | `useAppStore.ts`, `InsightsView.tsx` | `database.ts`, `achievementApi.ts` | `achievementApi.ts` |
+| `user_achievements` | `useAppStore.ts`, `InsightsView.tsx` | `database.ts`, `achievementApi.ts` | `achievementApi.ts` |
+| `notifications` | `useAppStore.ts`, `Header.tsx` | `database.ts`, `notificationApi.ts` | `notificationApi.ts` |
+
+---
+
+## 6. Identifier and Relationship Invariants
+
+- **Application-Supplied String IDs**: Every entity uses string primary keys (e.g. `sub_cs301`, `task_1`, `ai_1`). Auto-increment numeric IDs (`++id`) are **not used** in Version 3.
+- **Foreign Key Convention**: Optional and required foreign keys use string fields (`userId`, `subjectId`, `topicId`, `taskId`).
+- **Default Multi-Tenant Boundary**: All entities default `userId` to `'default_user'`.
+
+---
+
+## 7. Current Conversation Storage Model Analysis
+
+Authoritative inspection of `src/types/index.ts` and `src/api/aiConversationApi.ts` reveals:
 
 ```ts
-db.version(4).stores({
-  subjects: '&id, &name, createdAt, updatedAt',
-  tasks: '&id, subjectId, status, dueDate, priority, createdAt, updatedAt',
-  notes: '&id, subjectId, title, isPinned, createdAt, updatedAt',
-  resources: '&id, subjectId, title, type, createdAt, updatedAt',
-  plans: '&id, subjectId, status, startDate, endDate, createdAt, updatedAt',
-  focusSessions: '&id, subjectId, taskId, startTime, status, createdAt',
-  aiConversations: '&id, subjectId, mode, providerId, modelId, createdAt, updatedAt',
-  aiMessages: '&id, conversationId, role, status, createdAt',
-  settings: '&key, updatedAt',
-}).upgrade(async (tx) => {
-  // 1. Migrate auto-increment integer IDs to UUID strings where necessary
-  // 2. Extract embedded aiConversations.messages array into normalized aiMessages table
-  // 3. Mark any unclosed streaming messages as 'interrupted'
-  // 4. Ensure referential integrity across subjectId references
-});
+export interface AIConversation {
+  id: string;
+  userId?: string;
+  subjectId?: string | null;
+  taskId?: string | null;
+  role?: 'user' | 'assistant';
+  mode: 'chat' | 'tutor' | 'writer' | 'code' | 'quiz' | 'ask_resources' | 'explain' | 'summarize';
+  content?: string;
+  prompt?: string;
+  response?: string;
+  timestamp: number;
+  explanation?: {
+    confidence: number;
+    factors: string[];
+  };
+  providerId?: string;
+  providerName?: string;
+  modelId?: string;
+  generationStatus?: 'complete' | 'stopped' | 'failed';
+}
 ```
 
-### Migration Safeguards
-- **Idempotency**: Upgrade script runs inside a single Dexie transaction block (`tx`). If an error occurs, Dexie rolls back all changes automatically.
-- **Malformed Record Handling**: Legacy messages missing `role` or `content` default to `role: 'user'` and empty string content without throwing uncaught exceptions.
-- **Orphan Teardown**: `aiMessages` referencing non-existent `aiConversations` are pruned during migration.
+- Each record in `ai_conversations` represents an **individual interaction turn** (prompt and response pair, or single role message).
+- Records are sorted chronologically by `timestamp`.
+- There is **no embedded `messages[]` array** property on `AIConversation`.
+- Assistant responses are persisted upon generation completion via `addAIConversation()`.
 
 ---
 
-## 6. Phase 0 Migration Fixtures & Test Suite
+## 8. Conversation Architecture Decision — Strategy A Recommended
 
-To ensure 100% data preservation during migration, Phase 1 creates synthetic test fixtures representing all supported workspace variations:
+### Strategy Selection: **Strategy A (Preserve Flat Interaction Model)**
 
-1. **`empty-db-v3.json`**: Fresh database with 0 records.
-2. **`standard-workspace-v3.json`**: Representative user workspace with 5 subjects, 20 tasks, 10 notes, 3 plans, and 4 AI conversations with embedded message arrays.
-3. **`malformed-legacy-v3.json`**: Workspace containing legacy records with missing `updatedAt` timestamps, stringified dates, and orphaned tasks.
-4. **`large-workspace-v3.json`**: Stresstest workspace with 1,000 tasks, 500 notes, and 50 AI conversations (1,500 messages).
+#### Rationale & Evidence:
+1. **Zero Migration Risk**: Preserving the flat model avoids a complex Dexie schema migration that could corrupt or lose user chat history.
+2. **Existing Code Alignment**: All active UI components (`AIAssistantView.tsx`), hooks (`useAppStore.ts`), and API functions (`aiConversationApi.ts`) already operate seamlessly on `AIConversation` records.
+3. **Phase 0 Test Compatibility**: 100% of existing Phase 0 test fixtures and transport assertions rely on this flat structure.
+4. **Full Feature Coverage**: Prompt text, assistant response text, reasoning, provider metadata, and generation status are fully accommodated within `AIConversation`.
 
 ---
 
-## 7. Workspace Backup & Restore Compatibility
+## 9. `generationStatus` Compatibility Strategy
 
-### Backup Format Specification (Version 2 Envelope)
+- **Definition**: `generationStatus?: 'complete' | 'stopped' | 'failed'`
+- **Default Policy**: Any legacy record lacking `generationStatus` is treated as `'complete'` if `content` or `response` is non-empty.
+- **Interrupted Streams**: On application startup or active chat mount, any in-flight streaming record is updated to `'stopped'`.
+- **Failures**: Upstream transport failures write `generationStatus: 'failed'` along with sanitized error text.
+
+---
+
+## 10. Current Legacy Export Structure
+
+Inspection of `handleExportData` in `src/views/SettingsView.tsx` (lines 42–61):
+
+```json
+{
+  "users": [...],
+  "settings": [...],
+  "subjects": [...],
+  "topics": [...],
+  "tasks": [...],
+  "notes": [...],
+  "flashcards": [...],
+  "sessions": [...],
+  "exportedAt": "2026-07-25T00:00:00.000Z"
+}
+```
+
+### Critical Findings:
+- **Partial Export**: Only **8 tables** are exported. The remaining 6 tables (`goals`, `ai_conversations`, `statistics`, `achievement_definitions`, `user_achievements`, `notifications`) are excluded.
+- **Unversioned**: Contains no format version header (`version` or `schemaVersion`).
+- **No Import Handler**: There is currently no import or restore logic implemented in `SettingsView.tsx` or anywhere else.
+
+---
+
+## 11. Proposed Complete Backup Format (Envelope Version 2)
+
+Phase 1 introduces a complete, versioned workspace backup envelope:
+
 ```json
 {
   "version": 2,
-  "exportedAt": 1774396800000,
+  "schemaVersion": 3,
+  "exportedAt": "2026-07-25T00:00:00.000Z",
   "appVersion": "1.0.0",
   "data": {
+    "users": [],
+    "settings": [],
     "subjects": [],
+    "topics": [],
     "tasks": [],
     "notes": [],
-    "resources": [],
-    "plans": [],
-    "focusSessions": [],
-    "aiConversations": [],
-    "aiMessages": [],
-    "settings": []
+    "flashcards": [],
+    "sessions": [],
+    "goals": [],
+    "ai_conversations": [],
+    "statistics": [],
+    "achievement_definitions": [],
+    "user_achievements": [],
+    "notifications": []
   }
 }
 ```
 
-### Backward Compatibility (Version 1 Phase 0 Backups)
-- Import handler auto-detects unversioned legacy array dumps or Version 1 JSON files.
-- Version 1 backups pass through an in-memory normalization pipeline before insertion, converting embedded `aiConversations.messages` into normalized `aiMessages` records.
+---
 
-### Security Invariant Verification
-- Import/Export scripts strip any sensitive key properties (`apiKey`, `encryptedKey`, `token`, `password`) before writing JSON files.
+## 12. Restore Semantics & Backward Compatibility
+
+### Restore Engine Requirements (`src/services/backupService.ts` to be created):
+1. **Legacy Partial Export (V1) Compatibility**: Automatically detects unversioned 8-table JSON exports, imports available records safely, and leaves unexported tables intact.
+2. **Version 2 Backup Import**: Imports all 14 tables atomically within a single Dexie transaction (`db.transaction('rw', ...)`).
+3. **Deduplication & Merge Strategy**: Upserts records by primary key (`id`), ensuring existing workspace items are updated without creating duplicate primary keys.
+4. **Secret Stripping**: Backup export explicitly excludes sensitive credentials or tokens.
 
 ---
 
-## 8. Detailed Work Package Breakdown
+## 13. Dexie Version 4 Migration Verdict
 
-### Work Package 1 — Data Layer Inventory & Types Definition
-- **Scope**: Define TypeScript interfaces for Version 4 entities (`AIConversation`, `AIMessage`, `WorkspaceBackupV2`).
-- **Files Affected**: `src/types/database.ts`, `src/db/schema.ts`
-- **Acceptance Criteria**: Types export cleanly; 0 build errors.
+> **NO DEXIE SCHEMA VERSION 4 MIGRATION IS REQUIRED.**
 
-### Work Package 2 — Migration Test Harness & Fixtures
-- **Scope**: Build synthetic Version 3 fixtures and migration test utilities.
-- **Files Affected**: `src/db/__tests__/fixtures/v3Workspace.ts`, `src/db/__tests__/migrationV4.test.ts`
-- **Acceptance Criteria**: Test harness can load, seed, and reset IndexedDB test environments.
-
-### Work Package 3 — Dexie Version 4 Schema & Upgrade Transaction
-- **Scope**: Implement `db.version(4)` upgrade callback in `src/db/index.ts`.
-- **Files Affected**: `src/db/index.ts`, `src/db/migration.ts`
-- **Acceptance Criteria**: Successfully migrates V3 IndexedDB schemas to V4 without data loss.
-
-### Work Package 4 — Normalized Conversation & Message Services
-- **Scope**: Create `conversationService.ts` to manage normalized CRUD operations for `aiConversations` and `aiMessages`.
-- **Files Affected**: `src/services/ai/conversationService.ts`
-- **Acceptance Criteria**: Interrupted streams resume or mark as interrupted safely.
-
-### Work Package 5 — Backup Export & Import Envelope V2
-- **Scope**: Update `src/services/backupService.ts` to export Version 2 format and import Version 1 & 2 formats.
-- **Files Affected**: `src/services/backupService.ts`
-- **Acceptance Criteria**: Import of legacy V1 backup creates valid V4 IndexedDB tables.
-
-### Work Package 6 — Performance & Stresstest Validation
-- **Scope**: Run migration and export benchmark against `large-workspace-v3.json`.
-- **Files Affected**: `src/db/__tests__/performance.test.ts`
-- **Acceptance Criteria**: Migration completes under 1,500ms for 2,000 entities.
-
-### Work Package 7 — Comprehensive Regression & Build Validation
-- **Scope**: Run full Vitest suite and production Web/Electron builds.
-- **Files Affected**: Entire test suite.
-- **Acceptance Criteria**: 100% test pass rate, 0 build errors.
+### Technical Justification:
+- Dexie Version 3 already defines all 14 required tables.
+- Strategy A preserves the flat `ai_conversations` table.
+- Avoiding an unnecessary schema version bump eliminates database upgrade failures, transaction rollback risks, and backward-incompatibility issues.
 
 ---
 
-## 9. Comprehensive Test Matrix
+## 14. Real-Database Testing Strategy
 
-| Test Suite | File Path | Focus Area | Expected Outcome |
-|---|---|---|---|
-| Migration V4 Unit | `src/db/__tests__/migrationV4.test.ts` | V3 -> V4 schema upgrade | 100% data preservation |
-| Legacy Import | `src/services/__tests__/backupV1Import.test.ts` | Phase 0 V1 JSON import | Normalized V4 records created |
-| Conversation Service | `src/services/ai/__tests__/conversationService.test.ts` | Message append & stream interruption | `status: 'interrupted'` handled cleanly |
-| Security Verification | `src/services/__tests__/backupSecurity.test.ts` | Credential stripping in backups | 0 secret keys present in exported JSON |
-| Performance Benchmark | `src/db/__tests__/performance.test.ts` | 2,000 entity migration speed | < 1,500ms execution time |
-| Phase 0 Regressions | `src/services/ai/__tests__/*.test.ts` | Phase 0 AI transport tests | All 31 test files pass |
+All persistence and backup tests must run against live IndexedDB / Dexie instances (using `fake-indexeddb` in Vitest):
+
+1. **Startup & Seeding Test**: Verify empty database initializes `AetherPhase1DB` Version 3 and seeds starter records.
+2. **14-Table Export & Import Cycle**: Export complete V2 backup -> clear database -> import V2 backup -> verify 100% record equality.
+3. **Legacy V1 Import Test**: Import legacy 8-table export -> verify 8 tables populated cleanly without crashing missing table readers.
+4. **Conversation Persistence Test**: Insert `AIConversation` records -> query by timestamp -> verify sorting and `generationStatus` accuracy.
 
 ---
 
-## 10. Manual Verification Protocol
+## 15. Rollback and Recovery Limitations
 
-1. **Existing User Upgrade**: Open existing workspace -> verify all tasks, notes, subjects, and AI chat history persist.
-2. **New User Initialization**: Launch fresh browser/desktop session -> verify clean DB initialization without console errors.
-3. **Stream Interruption & Recovery**: Start AI chat generation -> close window mid-stream -> reopen -> verify message displays `[Interrupted]`.
-4. **V1 Backup Import**: Export backup in Phase 0 -> import into Phase 1 -> verify full data restoration.
-5. **Desktop Teardown & Restart**: Close packaged Electron application -> relaunch -> confirm Dexie IndexedDB state remains intact.
+- **Dexie Transaction Rollback**: If an error occurs during restore, Dexie automatically rolls back the transaction, leaving existing data untouched.
+- **Export Pre-Restore**: The restore engine will create an automatic in-memory export before executing a destructive restore operation.
 
 ---
 
-## 11. Performance Safeguards
-- **IndexedDB Batching**: Bulk writes to `aiMessages` use `db.aiMessages.bulkAdd()` or `bulkPut()` in chunks of 500 items.
-- **IPC Payload Capping**: Renderer-to-Main IPC message payloads capped at 2MB per payload to prevent main thread lag.
-- **JSON Stream Parsing**: Large backup imports use chunked object processing.
+## 16. Orphan-Handling Policy
+
+| Relationship | Child Table | Parent Table | Policy | Action |
+|---|---|---|---|---|
+| Topic -> Subject | `topics` | `subjects` | Preserve & Flag | Set `subjectId: 'sub_unassigned'` if parent subject is missing |
+| Task -> Subject | `tasks` | `subjects` | Preserve | Set `subjectId: undefined` |
+| Note -> Subject | `notes` | `subjects` | Preserve | Set `subjectId: 'sub_unassigned'` |
+| Session -> Subject/Task | `sessions` | `subjects` / `tasks` | Preserve | Set null foreign key references |
+| UserAchievement -> Definition | `user_achievements` | `achievement_definitions` | Prune | Delete orphaned achievement progress records |
 
 ---
 
-## 12. Security and Privacy Invariants
-- **Credential Encryption**: API keys remain locked inside Windows Vault (`safeStorage`) or Express local store.
-- **Secret Redaction**: Error logs pass through `redactSecretsInString` before display or output.
-- **Backup Hygiene**: Exported JSON files are checked for `sk-`, `nvapi-`, and `Bearer` string patterns before write completion.
+## 17. Detailed Work Package Breakdown (Exactly 10 Work Packages)
+
+### WP-01: Persistence Architecture Inventory & Invariants Audit
+- **Scope**: Document all Version 3 table definitions, indexes, and type interfaces.
+- **Files**: `src/db/database.ts`, `src/types/index.ts`
+- **Acceptance Criteria**: Inventory fully aligned with codebase; 0 missing tables.
+
+### WP-02: Legacy Export Shape & Backup Envelope V2 Specification
+- **Scope**: Define JSON schemas for legacy V1 partial exports and V2 14-table backup envelopes.
+- **Files**: `src/types/backup.ts` (new)
+- **Acceptance Criteria**: Type-safe backup envelope structures exported cleanly.
+
+### WP-03: Backup Service Extraction & 14-Table Export Implementation
+- **Scope**: Extract inline export logic from `SettingsView.tsx` into a dedicated `src/services/backupService.ts` module supporting full 14-table exports.
+- **Files**: `src/services/backupService.ts` (new), `src/views/SettingsView.tsx`
+- **Acceptance Criteria**: Export button downloads a valid 14-table V2 JSON backup.
+
+### WP-04: Workspace Restore Engine & Legacy V1 Import Compatibility
+- **Scope**: Implement `importWorkspaceBackup()` in `src/services/backupService.ts` with support for V1 and V2 JSON formats.
+- **Files**: `src/services/backupService.ts`, `src/views/SettingsView.tsx`
+- **Acceptance Criteria**: Both V1 legacy backups and V2 full backups import successfully inside a Dexie transaction.
+
+### WP-05: AI Conversation Persistence Hardening & `generationStatus` Integrity
+- **Scope**: Ensure all AI interaction handlers set and read `generationStatus` ('complete', 'stopped', 'failed') correctly.
+- **Files**: `src/api/aiConversationApi.ts`, `src/services/ai/orchestrator.ts`
+- **Acceptance Criteria**: Interrupted or failed responses persist accurate status flags.
+
+### WP-06: Orphan Detection & Referential Integrity Verification
+- **Scope**: Add orphan detection and safe cleanup utilities in `src/db/cleanup.ts` (new).
+- **Files**: `src/db/cleanup.ts` (new)
+- **Acceptance Criteria**: Prunes orphaned achievements and reassigns orphaned tasks/notes safely.
+
+### WP-07: Real IndexedDB / Dexie Test Harness & Integration Suite
+- **Scope**: Build Vitest tests using `fake-indexeddb` exercising startup, seed, export, import, and conversation queries.
+- **Files**: `src/db/__tests__/databaseIntegration.test.ts` (new)
+- **Acceptance Criteria**: 100% pass rate across all database integration tests.
+
+### WP-08: Security & Secret Redaction Verification in Backups
+- **Scope**: Add automated checks ensuring exported JSON backups contain zero API keys, secrets, or Bearer tokens.
+- **Files**: `src/services/__tests__/backupSecurity.test.ts` (new)
+- **Acceptance Criteria**: Security tests verify 0 credentials leaked in exported files.
+
+### WP-09: Performance Characterization Procedure
+- **Scope**: Implement benchmark script measuring database open, export, and import durations across small, medium, and large synthetic datasets.
+- **Files**: `src/db/__tests__/performanceBenchmark.test.ts` (new)
+- **Acceptance Criteria**: Benchmark records baseline metrics without failing build gates.
+
+### WP-10: Cross-Platform (Browser & Electron) Verification & Phase 1 Closeout
+- **Scope**: Run full Vitest test suite and production builds (`npm run build`, `npm run build:electron`).
+- **Files**: Entire repository.
+- **Acceptance Criteria**: All tests pass, 0 build errors, clean git working tree.
 
 ---
 
-## 13. Definition of Done
-Phase 1 will be declared complete when:
-1. All Phase 0 regression tests pass with 0 failures.
-2. Dexie Version 4 migration executes cleanly across all 4 synthetic workspace fixtures.
-3. V1 legacy workspace backups import seamlessly into V4 schema.
-4. AI conversation history survives stream interruptions and application restarts.
-5. Production `npm run build` and `npm run build:electron` execute with 0 TypeScript/compilation errors.
-6. A final independent Phase 1 verification report is produced and committed.
+## 18. Manual Verification Protocol
+
+1. **Database Initialization**: Launch fresh browser session -> verify `AetherPhase1DB` Version 3 opens and seeds 14 tables without console warnings.
+2. **Complete 14-Table Export**: Navigate to Settings -> System Preferences & Data -> Click Export JSON Backup -> Inspect downloaded JSON file to confirm all 14 tables and Envelope V2 structure.
+3. **Workspace Restore**: Modify a task -> click Restore Backup -> select V2 backup -> verify original workspace state is perfectly restored.
+4. **Legacy V1 Backup Import**: Select an old 8-table Phase 0 JSON backup -> click Restore -> verify legacy data imports without crashing unexported table readers.
+5. **AI Stream Interruption**: Trigger an AI query -> interrupt stream -> verify conversation history reflects `generationStatus: 'stopped'`.
+
+---
+
+## 19. Performance-Characterization Plan
+
+Rather than enforcing arbitrary thresholds, Phase 1 establishes an empirical benchmark procedure:
+- **Datasets**: Small (50 entities), Medium (500 entities), Large (2,500 entities).
+- **Metrics Collected**: Database initialization time (ms), 14-table export time (ms), transactional restore time (ms), peak backup JSON file size (KB).
+- **Environment Context**: Recorded alongside test output (Node.js version, OS platform).
+
+---
+
+## 20. Security and Privacy Invariants
+
+- **Credential Isolation**: No API keys or credentials stored in IndexedDB tables (`users`, `settings`, etc.).
+- **Secret Redaction**: Error logs and backup outputs pass through secret redaction rules (`sk-`, `nvapi-`, `Bearer`).
+- **Preload Bridge Security**: Electron main process handles AI networking; Renderer process receives sanitized responses only.
+
+---
+
+## 21. Explicit Out-of-Scope Items
+
+- UI redesigns, theme modifications, or component layout overhauls.
+- Adding new AI LLM providers or altering provider network transport code.
+- Implementing vector search, embeddings, or RAG indexing pipelines.
+- Citations presentation UI or footnote rendering.
+- Token billing, usage pricing calculators, or monetary metrics.
+- Mobile platform support (iOS / Android).
+
+---
+
+## 22. Definition of Done
+
+Phase 1 will be complete when:
+1. All 31 existing Phase 0 test files continue to pass with 0 regressions.
+2. 14-table export and transactional restore engine is fully implemented and tested.
+3. Legacy V1 8-table backup import is verified compatible.
+4. AI conversation persistence handles `generationStatus` accurately.
+5. Production `npm run build` and `npm run build:electron` succeed with 0 errors.
+6. Clean documentation commit created and ready for independent architectural review.
+
+---
+
+## 23. Open Architectural Decisions
+
+- **Restore UI Placement**: Whether to add a "Restore Backup" file input directly under the Export button in `SettingsView.tsx` (Recommended: Yes).
+- **Automatic Pre-Restore Export**: Whether restoring a backup should automatically trigger a local JSON download of the current state before overwriting (Recommended: Yes).
+
+---
+
+## 24. Independent-Review Checklist
+
+- [x] Grounded in real repository code (`src/db/database.ts`, `src/types/index.ts`, `src/views/SettingsView.tsx`)
+- [x] Database name correctly identified as `AetherPhase1DB`
+- [x] Schema correctly identified as Dexie Version 3 with 14 tables
+- [x] Strategy A selected to preserve flat `ai_conversations` interaction model
+- [x] Confirmed no Dexie Version 4 migration is required
+- [x] Inline export in `SettingsView.tsx` identified and planned for extraction
+- [x] Exactly 10 reviewable work packages specified
+- [x] Zero production code changed during planning task
