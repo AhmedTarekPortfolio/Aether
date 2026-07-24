@@ -1,7 +1,7 @@
 # Phase 0 AI Transport Baseline & Characterization Report
 
 ## 1. Executive Summary
-Phase 0 of the FocusForge AI-to-Aether integration blueprint has been completed and verified. This phase freezes, characterizes, and tests Aether's existing AI transport baseline across both Electron desktop IPC and Express loopback web proxy runtimes. All existing application behavior has been preserved without intentional production modifications, database migrations, or UI redesigns. All test files run on unique source code files with explicitVitest exclusions for compiled dist folders.
+Phase 0 of the FocusForge AI-to-Aether integration blueprint has been completed and verified. This phase freezes, characterizes, and tests Aether's existing AI transport baseline across both Electron desktop IPC and Express loopback web proxy runtimes. All existing application behavior has been preserved without intentional production modifications, database migrations, or UI redesigns. All test files run on unique source code files with explicit Vitest exclusions for compiled dist folders.
 
 ---
 
@@ -14,13 +14,14 @@ Phase 0 of the FocusForge AI-to-Aether integration blueprint has been completed 
 | `d:\Ahmed's Work\Aether\.agent\skills\multi-platform-apps-multi-platform\SKILL.md` | Loaded & Used | Governed Web vs. Desktop feature parity analysis and desktop bridge isolation. |
 | `C:\Users\Ahmed Tarek\.gemini\antigravity\builtin\skills\antigravity_guide\SKILL.md` | Loaded & Used | Governed agent execution, background task scheduling, and markdown artifact formatting. |
 
-**Expected skills missing**: None. All required skill files were located, loaded, and applied.
+**Skill Name Mismatch Note**: File `.agent/skills/aether-app-reviewer/SKILL.md` declares internal name `aether-senior-engineer`. This mismatch is harmless and does not affect skill discovery, loading, or execution.
 
 ---
 
 ## 3. Repository and Commit Inspected
 - **Repository**: `AhmedTarekPortfolio/Aether`
 - **Base Commit**: `1faeb9b` (`fix(desktop): repair Electron packaged blank screen, asset paths, and preload bridge`)
+- **Phase 0 Baseline Commit**: `c298bfb` (`test(ai): establish verified Phase 0 transport baseline`)
 
 ---
 
@@ -82,9 +83,11 @@ flowchart TD
 | `nvidia_nim` | Yes (Custom reasoning field) | Yes | No | Yes | Verified through production path |
 | `anthropic` | Yes | Yes | No | Yes | Verified through production path |
 | `gemini` | Yes | Yes | No | Non-streaming in Express | Confirmed Phase 1 gap (Express streaming) |
-| `ollama` | Yes | Yes | Yes (Loopback) | Yes | Verified through production path |
-| `lmstudio` | Yes | Yes | Yes (Loopback) | Yes | Verified through production path |
+| `ollama` | Yes | Yes | Yes (Loopback) | Yes | Partial production-path coverage |
+| `lmstudio` | Yes | Yes | Yes (Loopback) | Yes | Partial production-path coverage |
 | `local` | Yes | Yes | Yes (Offline Template) | N/A | Verified through production path |
+
+*Note on Ollama and LM Studio*: Ollama and LM Studio production coverage is partial. The shared local-provider production path is exercised, but their distinct endpoint-routing behaviour is not independently verified.
 
 ---
 
@@ -96,7 +99,7 @@ flowchart TD
 - **NVIDIA NIM**: Endpoint `https://integrate.api.nvidia.com/v1/chat/completions`, parses `choices[0].message.reasoning_content`. Verified through production path `NvidiaDesktopProvider`.
 - **Anthropic**: Endpoint `https://api.anthropic.com/v1/messages`, headers `x-api-key: <key>`, `anthropic-version: 2023-06-01`. Verified through production path `AnthropicDesktopProvider`.
 - **Gemini**: Endpoint `https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent?key=<key>`. Verified through production path `GeminiDesktopProvider`.
-- **Ollama / LM Studio**: Local loopback endpoints `http://127.0.0.1:11434/v1` and `http://127.0.0.1:1234/v1`. Verified through production path `LocalDesktopProvider`.
+- **Ollama / LM Studio**: Local loopback endpoints `http://127.0.0.1:11434/v1` and `http://127.0.0.1:1234/v1`. Shared local-provider path is exercised; distinct endpoint-routing behaviour is an identified test gap (AETHER-TEST-001 / AETHER-TEST-002).
 - **Local**: Template generator evaluated purely in memory. Verified through production path `LocalDesktopProvider`.
 
 ---
@@ -128,14 +131,14 @@ flowchart TD
 
 - **React Client**: `aiOrchestrator.cancel(requestId)` aborts active `AbortController`. (Verified through production path)
 - **Electron Main**: `desktopAIService.cancel(requestId)` triggers internal `AbortController.abort()`. (Verified through production path)
-- **Express Proxy**: `AbortController` timeout (120s) and HTTP disconnect cleanup. (Verified through production path)
+- **Express Proxy**: Active cancellation is verified for `desktopAIService` and `aiOrchestrator`. Express client-disconnect cleanup remains an identified test gap (AETHER-TEST-003).
 
 ---
 
 ## 11. Credential-Storage and Credential-Flow Map
 
-- **Electron**: Keys stored in OS Credential Vault via `safeStorage.encryptString()`. Never returned to renderer. Status returns `{ configured: true, mask: 'sk-...1234' }`. (Verified through production path)
-- **Express Proxy**: Keys stored in local server file/memory store. Status returns `{ configured: true, mask: 'sk-...1234' }`. (Verified through production path)
+- **Electron**: Keys stored in OS Credential Vault via `safeStorage.encryptString()`. Never returned to renderer. Status returns `{ configured: true, mask: '••••1234' }`. (Verified through production path)
+- **Express Proxy**: Keys stored in local server file/memory store. Status returns `{ configured: true, mask: '••••1234' }`. (Verified through production path)
 - **Redaction**: All error logs and exception messages pass through secret redaction patterns (`sk-`, `nvapi-`, `Bearer`). (Verified through production path)
 
 ---
