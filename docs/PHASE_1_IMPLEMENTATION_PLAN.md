@@ -251,6 +251,7 @@ export interface AetherBackupV2 {
   1. **Pre-export**: Read all 14 tables, validate record shapes, IDs, timestamps, statuses, relationships, and secrets before offering a file. Invalid current data blocks export with redacted diagnostics and no database mutation.
   2. **Post-export**: Serialize, parse the produced JSON again, run the complete V2 validator, verify all counts, and only then save/download it.
   3. **Pre-restore**: Parse and validate the complete incoming file—including all relationships—before creating the safety backup and before opening the destructive transaction.
+- **Known Historical AI `subjectId` Defect**: Export validation recognizes a dangling `AIConversation.subjectId` that matches a currently known provider-profile ID as the production defect at `orchestrator.ts` line 224. The exported copy uses `subjectId: null`, copies the value to `providerId` only when `providerId` is absent, and emits a user-visible warning; IndexedDB is never mutated. A dangling value that cannot be matched to a known provider profile rejects export rather than being silently reinterpreted.
 
 ---
 
@@ -274,14 +275,14 @@ An optional relationship may be absent, but a non-empty referenced ID may never 
 | `Session.userId` | `users.id` | Optional; omitted/`undefined` | Seed/store logging writes active user | If present, parent must exist incoming | If present, parent may exist incoming or current |
 | `Session.subjectId` | `subjects.id` | Optional; omitted/`undefined`/`null` | Logging may write selected ID or `null` | If string, parent must exist incoming | If string, parent may exist incoming or current |
 | `Session.taskId` | `tasks.id` | Optional; omitted/`undefined`/`null` | Logging may write selected ID or `null` | If string, parent must exist incoming | If string, parent may exist incoming or current |
-| `Goal.userId` | `users.id` | Optional; omitted/`undefined` | Current seed writes active user | If present, parent must exist incoming | V1 omits table; unchanged |
-| `Goal.subjectId` | `subjects.id` | Optional; omitted/`undefined`/`null` | Current seed writes subject or omits | If string, parent must exist incoming | V1 omits table; unchanged |
-| `AIConversation.userId` | `users.id` | Optional for legacy; proposed writer always supplies string | Current writers omit; WP-07 propagates active user | If present, parent must exist incoming | V1 omits table; unchanged |
+| `Goal.userId` | `users.id` | Optional; omitted/`undefined` | No current record writer | If present, parent must exist incoming | V1 omits table; unchanged |
+| `Goal.subjectId` | `subjects.id` | Optional; omitted/`undefined`/`null` | No current record writer | If string, parent must exist incoming | V1 omits table; unchanged |
+| `AIConversation.userId` | `users.id` | Optional for legacy; proposed writer always supplies string | Store callback writes active user; orchestrator currently omits it | If present, parent must exist incoming | V1 omits table; unchanged |
 | `AIConversation.subjectId` | `subjects.id` | Optional; omitted/`undefined`/`null` | Current orchestrator is defective; WP-07 writes real context | If string, parent must exist incoming | V1 omits table; unchanged |
 | `AIConversation.taskId` | `tasks.id` | Optional; omitted/`undefined`/`null` | Current writers omit; WP-07 writes real context | If string, parent must exist incoming | V1 omits table; unchanged |
-| `Statistic.userId` | `users.id` | Optional; omitted/`undefined` | Current seed writes active user | If present, parent must exist incoming | V1 omits table; unchanged |
-| `UserAchievement.userId` | `users.id` | Optional; omitted/`undefined` | Current seed writes active user | If present, parent must exist incoming | V1 omits table; unchanged |
-| `UserAchievement.achievementId` | `achievement_definitions.id` | Required; no absence | Current seed references canonical ID | Must reference installed canonical definition | V1 omits table; unchanged |
+| `Statistic.userId` | `users.id` | Optional; omitted/`undefined` | No current record writer | If present, parent must exist incoming | V1 omits table; unchanged |
+| `UserAchievement.userId` | `users.id` | Optional; omitted/`undefined` | No current record writer | If present, parent must exist incoming | V1 omits table; unchanged |
+| `UserAchievement.achievementId` | `achievement_definitions.id` | Required; no absence | No current record writer | Must reference installed canonical definition | V1 omits table; unchanged |
 | `NotificationItem.userId` | `users.id` | Optional; omitted/`undefined` | Current seed writes active user | If present, parent must exist incoming | V1 omits table; unchanged |
 | `NotificationItem.relatedTaskId` | `tasks.id` | Optional; omitted/`undefined` | Current seed may write task ID | If present, parent must exist incoming | V1 omits table; unchanged |
 | `NotificationItem.relatedSubjectId` | `subjects.id` | Optional; omitted/`undefined` | Current seed may write subject ID | If present, parent must exist incoming | V1 omits table; unchanged |
@@ -400,6 +401,7 @@ await db.transaction('rw', [
 
 - **Outside Transaction**: File parsing, format detection, schema validation, safety backup download, and user prompts.
 - **Inside Transaction**: `readAllTransactionCounts()` reads all 14 scoped tables and `assertAllRelationshipsWithinTransaction()` enforces every required/present optional relation in Section 10 using only transaction-bound Dexie reads. Zero network calls, file I/O, downloads, timers, or DOM prompts occur. Any count/relationship failure throws before callback completion and Dexie rolls back all 14 tables.
+- **Cancellation Boundary**: Cancellation is allowed only before the restore transaction starts. Once the user confirms and the transaction opens, the UI disables cancellation and no `AbortSignal` is observed until the transaction commits or rolls back.
 
 ---
 
@@ -411,6 +413,7 @@ Immediately before opening the restore transaction, the application writes a non
 - state (`transaction-started` or `verification-failed`);
 - expected post-restore counts for all 14 tables;
 - SHA-256 digest of the validated incoming backup;
+- SHA-256 digest of the expected normalized post-restore state: all 14 table arrays sorted by string `id`, canonical installed achievement definitions substituted for incoming definitions, and volatile envelope metadata excluded;
 - start timestamp and runtime (`browser` or `electron`).
 
 The marker contains no records, prompt content, credentials, provider payloads, or filesystem path and requires no Dexie field or version bump. Failure to write/read back the marker aborts restore before the transaction with zero database mutation. It is cleared only after transaction commit, database reopen, all count/relationship checks, and application-store refresh succeed.
@@ -419,7 +422,7 @@ The marker contains no records, prompt content, credentials, provider payloads, 
 1. **Failure before commit**: Dexie rolls back. The marker remains, so the UI reports an interrupted restore rather than success. A read-only verification determines whether current contents match the incoming expected counts; no automatic retry or mutation occurs.
 2. **Reopen, integrity, or pre-refresh failure after commit**: Update the marker to `verification-failed`; do not claim success. Render a persistent `Restore Verification Warning` with redacted diagnostics, "Retry Verification", and "Restore from Safety Backup".
 3. **Store refresh**: After a verified reopen, stores reload from actual IndexedDB contents. If refresh fails, the marker remains and the success UI is withheld.
-4. **Restart**: Startup checks the marker before normal application initialization, reopens `AetherPhase1DB`, compares all 14 counts with the marker, and reruns Section 10 relationships. Success clears the marker and then refreshes stores. Failure keeps the warning state.
+4. **Restart**: Startup checks the marker before normal application initialization, reopens `AetherPhase1DB`, compares all 14 counts with the marker, reruns Section 10 relationships, and compares a recomputed normalized-state digest with the marker. Success clears the marker and then refreshes stores. Same-count/different-content state is a verification failure. Failure keeps the warning state.
 5. **Safety-backup selection**: The application never assumes a browser `File`, Blob, or Electron path survives restart. Recovery always asks the user to reselect the saved safety-backup file, validates it fully, displays its timestamp/count summary, and requires deliberate confirmation before invoking the normal restore workflow.
 6. **No automatic mutation**: Recovery checks are read-only. Restoring the safety backup is a new user-confirmed restore with a newly validated safety backup; the system never automatically clears, rewrites, or retries database mutations.
 7. **Clearing state**: Only successful verification plus store refresh clears the marker/banner. A user may dismiss explanatory text but cannot dismiss the unresolved recovery state.
@@ -500,8 +503,8 @@ The marker contains no records, prompt content, credentials, provider payloads, 
 - **Purpose**: Define formal TypeScript backup interfaces, relationship matrices, and AI single-writer specifications.
 - **Scope**: Create `src/types/backup.ts` and freeze the exact V2 envelope, per-table allowlists/timestamps, relationship matrix, achievement authority, AI context, and recovery-marker contracts.
 - **Existing Files**: `src/types/index.ts`.
-- **Proposed Files**: `src/types/backup.ts`.
-- **Expected Production Changes**: None.
+- **Proposed Files**: `src/types/backup.ts`, `src/types/index.ts`, `src/types/__tests__/backupContracts.test.ts`.
+- **Expected Production Changes**: Type-only contract exports; no runtime behavior.
 - **Explicit Exclusions**: No implementation code.
 - **Dependencies**: WP-01.
 - **Risks**: A structurally valid but semantically incomplete contract could permit destructive restore of invalid data.

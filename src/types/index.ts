@@ -253,3 +253,5 @@ export interface UserProfile {
   soundEnabled: boolean;
   aiProvider?: 'local' | 'openai' | 'gemini' | 'anthropic';
 }
+
+export * from './backup';
