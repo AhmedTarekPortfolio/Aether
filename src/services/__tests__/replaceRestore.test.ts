@@ -16,6 +16,7 @@ import {
   prepareReplaceRestore,
   readBackupSnapshot,
   replaceRestore,
+  type ReplaceRestoreHooks,
 } from '../backupService';
 
 const cleanup = new Set<string>();
@@ -64,7 +65,25 @@ async function seed(database: AetherDatabase, data: AetherBackupDataV2): Promise
   });
 }
 
+const ROLLBACK_FAILURE_CASES: Array<[string, ReplaceRestoreHooks]> = [
+  ...REPLACE_RESTORE_CLEAR_ORDER.map((target): [string, ReplaceRestoreHooks] => [
+    `clear:${target}`,
+    { afterClear: (table) => { if (table === target) throw new Error('injected'); } },
+  ]),
+  ...REPLACE_RESTORE_INSERT_ORDER.map((target): [string, ReplaceRestoreHooks] => [
+    `insert:${target}`,
+    { afterInsert: (table) => { if (table === target) throw new Error('injected'); } },
+  ]),
+  ...PERSISTENCE_TABLES.map((target): [string, ReplaceRestoreHooks] => [
+    `count:${target}`,
+    { beforeTableCountVerification: (table) => { if (table === target) throw new Error('injected'); } },
+  ]),
+  ['relationship verification', { beforeRelationshipVerification: () => { throw new Error('injected'); } }],
+  ['count verification', { beforeCountVerification: () => { throw new Error('injected'); } }],
+];
+
 afterEach(async () => {
+  localStorage.clear();
   for (const name of cleanup) await deleteTestDatabase(name);
   cleanup.clear();
 });
@@ -118,7 +137,12 @@ describe('WP-06 safety and atomic replacement', () => {
       runtime: 'browser',
       deliver: vi.fn().mockResolvedValue(true),
     }, db);
-    await expect(replaceRestore(prepared, { safetyReceipt: safety, confirmed: false, database: db }))
+    await expect(replaceRestore(prepared, {
+      safetyReceipt: safety,
+      confirmed: false,
+      database: db,
+      refresh: vi.fn(),
+    }))
       .rejects.toThrow();
     expect((await readBackupSnapshot(db)).users[0].id).toBe('before-user');
   });
@@ -139,6 +163,7 @@ describe('WP-06 safety and atomic replacement', () => {
       database: db,
       safetyReceipt: forged,
       confirmed: true,
+      refresh: vi.fn(),
     })).rejects.toThrow(/completed safety backup/i);
     expect(await readBackupSnapshot(db)).toEqual(before);
   });
@@ -156,6 +181,7 @@ describe('WP-06 safety and atomic replacement', () => {
       database: db,
       safetyReceipt: safety,
       confirmed: true,
+      refresh: vi.fn(),
       hooks: {
         beforeClear: (table) => { events.push(`clear:${table}`); },
         beforeInsert: (table) => { events.push(`insert:${table}`); },
@@ -171,18 +197,9 @@ describe('WP-06 safety and atomic replacement', () => {
     expect(restored.achievement_definitions).toEqual(CANONICAL_ACHIEVEMENT_DEFINITIONS);
   });
 
-  it.each([
-    ['before first clear', { beforeClear: (table: string) => { if (table === REPLACE_RESTORE_CLEAR_ORDER[0]) throw new Error('injected'); } }],
-    ['early clear', { afterClear: (table: string) => { if (table === REPLACE_RESTORE_CLEAR_ORDER[1]) throw new Error('injected'); } }],
-    ['middle clear', { afterClear: (table: string) => { if (table === 'goals') throw new Error('injected'); } }],
-    ['final clear', { afterClear: (table: string) => { if (table === REPLACE_RESTORE_CLEAR_ORDER.at(-1)) throw new Error('injected'); } }],
-    ['first insert', { beforeInsert: (table: string) => { if (table === REPLACE_RESTORE_INSERT_ORDER[0]) throw new Error('injected'); } }],
-    ['canonical insert', { afterInsert: (table: string) => { if (table === 'achievement_definitions') throw new Error('injected'); } }],
-    ['middle insert', { afterInsert: (table: string) => { if (table === 'tasks') throw new Error('injected'); } }],
-    ['final insert', { afterInsert: (table: string) => { if (table === REPLACE_RESTORE_INSERT_ORDER.at(-1)) throw new Error('injected'); } }],
-    ['relationship verification', { beforeRelationshipVerification: () => { throw new Error('injected'); } }],
-    ['count verification', { beforeCountVerification: () => { throw new Error('injected'); } }],
-  ])('rolls back all 14 tables after %s failure', async (_label, hooks) => {
+  it.each(ROLLBACK_FAILURE_CASES)(
+    'rolls back all 14 tables after %s failure',
+    async (_label, hooks) => {
     const db = await database();
     await seed(db, snapshot('before'));
     const before = await readBackupSnapshot(db);
@@ -195,10 +212,12 @@ describe('WP-06 safety and atomic replacement', () => {
       database: db,
       safetyReceipt: safety,
       confirmed: true,
+      refresh: vi.fn(),
       hooks,
     })).rejects.toThrow(/rolled back/i);
     expect(await readBackupSnapshot(db)).toEqual(before);
-  });
+    },
+  );
 
   it('revalidates a corrupted prepared payload before the first clear', async () => {
     const db = await database();
@@ -214,6 +233,7 @@ describe('WP-06 safety and atomic replacement', () => {
       database: db,
       safetyReceipt: safety,
       confirmed: true,
+      refresh: vi.fn(),
     })).rejects.toThrow();
     expect(await readBackupSnapshot(db)).toEqual(before);
   });

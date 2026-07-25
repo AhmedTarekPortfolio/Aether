@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, seedInitialDataIfEmpty } from '../db/database';
 import { logger } from '../services/logger';
+import { readBackupSnapshot, validateBackupSnapshot } from '../services/backupService';
+import {
+  inspectRestoreVerificationMarker,
+  verifyPendingRestore,
+} from '../services/restoreVerificationState';
 import { 
   ActiveTab, 
   Subject, 
@@ -54,6 +59,13 @@ export function useAetherStore() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
   const [explainabilityModalOpen, setExplainabilityModalOpen] = useState<boolean>(false);
   const [activeFocusTaskId, setActiveFocusTaskId] = useState<string | null>(null);
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
+  const [initialized, setInitialized] = useState(false);
+  const pendingRefreshRef = useRef<{
+    generation: number;
+    resolve: () => void;
+  } | null>(null);
+  const startupPromiseRef = useRef<Promise<void> | null>(null);
 
   // Cmd/Ctrl + K shortcut listener
   useEffect(() => {
@@ -67,39 +79,144 @@ export function useAetherStore() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Seed DB on mount and log startup
-  useEffect(() => {
-    seedInitialDataIfEmpty().then(() => {
-      logger.info('Database initialized and opened successfully.');
-    });
-  }, []);
-
   // Reactive Dexie Live Queries for 3NF normalized tables (read subscriptions)
-  const subjects = useLiveQuery(() => db.subjects.toArray(), []) || [];
-  const topics = useLiveQuery(() => db.topics.toArray(), []) || [];
-  const tasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const notes = useLiveQuery(() => db.notes.orderBy('updatedAt').reverse().toArray(), []) || [];
-  const flashcards = useLiveQuery(() => db.flashcards.toArray(), []) || [];
-  const focusSessions = useLiveQuery(() => db.sessions.toArray(), []) || [];
-  const aiChats = useLiveQuery(() => db.ai_conversations.orderBy('timestamp').toArray(), []) || [];
-  const notifications = useLiveQuery(() => db.notifications.orderBy('createdAt').reverse().toArray(), []) || [];
+  const subjectsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.subjects.toArray(),
+  }), [refreshGeneration]);
+  const topicsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.topics.toArray(),
+  }), [refreshGeneration]);
+  const tasksQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.tasks.toArray(),
+  }), [refreshGeneration]);
+  const notesQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.notes.orderBy('updatedAt').reverse().toArray(),
+  }), [refreshGeneration]);
+  const flashcardsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.flashcards.toArray(),
+  }), [refreshGeneration]);
+  const focusSessionsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.sessions.toArray(),
+  }), [refreshGeneration]);
+  const aiChatsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.ai_conversations.orderBy('timestamp').toArray(),
+  }), [refreshGeneration]);
+  const notificationsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.notifications.orderBy('createdAt').reverse().toArray(),
+  }), [refreshGeneration]);
 
   // Synthesize userProfile from users & settings tables for UI compatibility
-  const userProfile = useLiveQuery(async () => {
+  const userProfileQuery = useLiveQuery(async () => {
     const u = await db.users.get('default_user');
     const s = await db.settings.get('default_settings');
-    if (!u) return null;
     return {
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      academicLevel: u.academicLevel,
-      studyGoalHoursWeekly: s?.studyGoalHoursWeekly || 25,
-      theme: s?.theme || 'dark',
-      soundEnabled: s?.soundEnabled ?? true,
-      aiProvider: s?.aiProvider || 'local',
-    } as UserProfile;
+      generation: refreshGeneration,
+      value: u
+        ? {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          academicLevel: u.academicLevel,
+          studyGoalHoursWeekly: s?.studyGoalHoursWeekly || 25,
+          theme: s?.theme || 'dark',
+          soundEnabled: s?.soundEnabled ?? true,
+          aiProvider: s?.aiProvider || 'local',
+        } as UserProfile
+        : null,
+    };
+  }, [refreshGeneration]);
+
+  const refreshFromIndexedDb = async () => {
+    if (pendingRefreshRef.current) {
+      throw new Error('An application-store refresh is already in progress.');
+    }
+    const snapshot = await readBackupSnapshot(db);
+    validateBackupSnapshot(snapshot);
+    const nextGeneration = refreshGeneration + 1;
+    await new Promise<void>((resolve) => {
+      pendingRefreshRef.current = { generation: nextGeneration, resolve };
+      setRefreshGeneration(nextGeneration);
+    });
+  };
+
+  useEffect(() => {
+    const pending = pendingRefreshRef.current;
+    if (!pending) return;
+    const queryGenerations = [
+      subjectsQuery?.generation,
+      topicsQuery?.generation,
+      tasksQuery?.generation,
+      notesQuery?.generation,
+      flashcardsQuery?.generation,
+      focusSessionsQuery?.generation,
+      aiChatsQuery?.generation,
+      notificationsQuery?.generation,
+      userProfileQuery?.generation,
+    ];
+    if (queryGenerations.every((generation) => generation === pending.generation)) {
+      pendingRefreshRef.current = null;
+      pending.resolve();
+    }
+  }, [
+    subjectsQuery,
+    topicsQuery,
+    tasksQuery,
+    notesQuery,
+    flashcardsQuery,
+    focusSessionsQuery,
+    aiChatsQuery,
+    notificationsQuery,
+    userProfileQuery,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    if (!startupPromiseRef.current) {
+      startupPromiseRef.current = (async () => {
+        try {
+          const marker = inspectRestoreVerificationMarker();
+          if (marker.status === 'none') {
+            await seedInitialDataIfEmpty();
+            await refreshFromIndexedDb();
+          } else if (marker.status === 'pending') {
+            await verifyPendingRestore({
+              database: db,
+              refresh: async () => refreshFromIndexedDb(),
+            });
+          }
+          logger.info('Database initialized and application stores hydrated successfully.');
+        } catch {
+          logger.error('Database initialization or application-store hydration failed.');
+        }
+      })();
+    }
+    void startupPromiseRef.current.finally(() => {
+      if (active) setInitialized(true);
+    });
+    return () => {
+      active = false;
+    };
+    // Startup runs once; refreshFromIndexedDb intentionally uses generation 0.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const subjects = subjectsQuery?.rows ?? [];
+  const topics = topicsQuery?.rows ?? [];
+  const tasks = tasksQuery?.rows ?? [];
+  const notes = notesQuery?.rows ?? [];
+  const flashcards = flashcardsQuery?.rows ?? [];
+  const focusSessions = focusSessionsQuery?.rows ?? [];
+  const aiChats = aiChatsQuery?.rows ?? [];
+  const notifications = notificationsQuery?.rows ?? [];
+  const userProfile = userProfileQuery?.value ?? null;
 
   // Compute Next Best Action using explainable heuristics engine
   const nextBestAction = calculateNextBestAction(tasks, subjects);
@@ -274,5 +391,7 @@ export function useAetherStore() {
     markNotificationAsRead,
     markAllNotificationsAsRead,
     updateProfile,
+    refreshFromIndexedDb,
+    initialized,
   };
 }

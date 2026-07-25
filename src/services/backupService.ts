@@ -25,6 +25,7 @@ import {
   type PersistenceRecordMap,
   type PersistenceTableName,
 } from '../types';
+import type { MarkerStorage } from './restoreVerificationState';
 
 const REQUIRED_FIELDS = {
   users: ['id', 'name', 'email', 'academicLevel', 'createdAt', 'updatedAt'],
@@ -1234,13 +1235,19 @@ export interface ReplaceRestoreHooks {
   afterInsert?: (table: PersistenceTableName) => void | Promise<void>;
   beforeRelationshipVerification?: () => void | Promise<void>;
   beforeCountVerification?: () => void | Promise<void>;
+  beforeTableCountVerification?: (table: PersistenceTableName) => void | Promise<void>;
+  beforeReopen?: () => void | Promise<void>;
+  beforePostCommitVerification?: () => void | Promise<void>;
+  beforeStoreRefresh?: () => void | Promise<void>;
 }
 
 export interface ReplaceRestoreOptions {
   database?: AetherDatabase;
   safetyReceipt: SafetyBackupReceipt;
   confirmed: boolean;
-  refresh?: () => void | Promise<void>;
+  refresh: (snapshot: AetherBackupDataV2) => void | Promise<void>;
+  markerStorage?: MarkerStorage;
+  reopen?: (database: AetherDatabase) => Promise<void>;
   hooks?: ReplaceRestoreHooks;
 }
 
@@ -1306,13 +1313,6 @@ async function readAllTablesInTransaction(
   return Object.fromEntries(entries) as AetherBackupDataV2;
 }
 
-function equalCounts(
-  left: AetherBackupRecordCounts,
-  right: AetherBackupRecordCounts,
-): boolean {
-  return PERSISTENCE_TABLES.every((table) => left[table] === right[table]);
-}
-
 export async function replaceRestore(
   prepared: PreparedReplaceRestore,
   options: ReplaceRestoreOptions,
@@ -1321,8 +1321,9 @@ export async function replaceRestore(
     !options.confirmed
     || options.safetyReceipt?.kind !== 'verified-safety-backup'
     || options.safetyReceipt.token !== SAFETY_BACKUP_RECEIPT_TOKEN
+    || typeof options.refresh !== 'function'
   ) {
-    fail('Replacement restore requires a completed safety backup and deliberate confirmation.');
+    fail('Replacement restore requires a completed safety backup, deliberate confirmation, and an application refresh.');
   }
 
   const database = options.database ?? db;
@@ -1330,6 +1331,33 @@ export async function replaceRestore(
     (table) => database.table(table),
   );
   const hooks = options.hooks;
+  const {
+    digestIncomingBackup,
+    digestNormalizedState,
+    verifyDatabaseIntegrity,
+  } = await import('./integrityService');
+  const {
+    buildRestoreVerificationMarker,
+    clearRestoreVerificationMarker,
+    markRestoreVerificationFailed,
+    reopenDatabase,
+    writeRestoreVerificationMarker,
+  } = await import('./restoreVerificationState');
+
+  validateBackupV2(prepared.backup);
+  const incomingBackupDigest = await digestIncomingBackup(prepared.backup);
+  const expectedStateDigest = await digestNormalizedState(prepared.backup.data);
+  const marker = buildRestoreVerificationMarker({
+    runtime: options.safetyReceipt.runtime,
+    expectedPostRestoreCounts: prepared.expectedPostRestoreCounts,
+    incomingBackupDigest,
+    expectedStateDigest,
+  });
+  try {
+    writeRestoreVerificationMarker(marker, options.markerStorage);
+  } catch {
+    fail('Restore verification state could not be written and read back. No data was changed.');
+  }
 
   try {
     await database.transaction('rw', transactionTables, async () => {
@@ -1360,8 +1388,11 @@ export async function replaceRestore(
 
       await hooks?.beforeCountVerification?.();
       const actualCounts = calculateBackupRecordCounts(postRestore);
-      if (!equalCounts(actualCounts, prepared.expectedPostRestoreCounts)) {
-        throw new Error('Restore count verification failed.');
+      for (const table of PERSISTENCE_TABLES) {
+        await hooks?.beforeTableCountVerification?.(table);
+        if (actualCounts[table] !== prepared.expectedPostRestoreCounts[table]) {
+          throw new Error('Restore count verification failed.');
+        }
       }
     });
   } catch (error) {
@@ -1370,10 +1401,21 @@ export async function replaceRestore(
   }
 
   try {
-    await options.refresh?.();
+    await hooks?.beforeReopen?.();
+    await (options.reopen ?? reopenDatabase)(database);
+    await hooks?.beforePostCommitVerification?.();
+    const verification = await verifyDatabaseIntegrity(database, marker);
+    await hooks?.beforeStoreRefresh?.();
+    await options.refresh(verification.snapshot);
+    clearRestoreVerificationMarker(options.markerStorage);
   } catch {
+    try {
+      markRestoreVerificationFailed(marker, options.markerStorage);
+    } catch {
+      // The original durable marker remains the recovery authority.
+    }
     throw new LegacyImportCommittedError(
-      'Replacement restore committed and verified, but the application refresh failed.',
+      'Replacement restore committed, but post-restore verification is unresolved. Retry verification or deliberately restore the safety backup.',
     );
   }
 

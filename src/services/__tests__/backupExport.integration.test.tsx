@@ -65,6 +65,7 @@ describe('WP-04 Settings complete-backup integration', () => {
       <SettingsView
         userProfile={null}
         onUpdateProfile={vi.fn().mockResolvedValue(undefined)}
+        refreshFromIndexedDb={vi.fn().mockResolvedValue(undefined)}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /system preferences & data/i }));

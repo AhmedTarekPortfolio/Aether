@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -22,15 +22,19 @@ import {
 } from '../services/backupService';
 import { desktopBridge } from '../desktop/desktopBridge';
 import { isDesktop } from '../desktop/isDesktop';
+import { REQUEST_SAFETY_BACKUP_RECOVERY_EVENT } from '../components/common/RestoreRecoveryWarning';
+import { inspectRestoreVerificationMarker } from '../services/restoreVerificationState';
 
 interface SettingsViewProps {
   userProfile: UserProfile | null;
   onUpdateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  refreshFromIndexedDb: () => Promise<void>;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   userProfile,
   onUpdateProfile,
+  refreshFromIndexedDb,
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'system'>('profile');
   const [isModelSettingsOpen, setIsModelSettingsOpen] = useState(false);
@@ -56,6 +60,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     message: string;
   } | null>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
+  const recoveryFileInputRef = useRef<HTMLInputElement>(null);
+  const restoreOperationRef = useRef(false);
+  const recoveryPending = inspectRestoreVerificationMarker().status !== 'none';
 
   // Profile Form State
   const [name, setName] = useState(userProfile?.name || 'Alex Rivera');
@@ -157,6 +164,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setPreparedRestore(null);
     setSafetyReceipt(null);
     if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+    if (recoveryFileInputRef.current) recoveryFileInputRef.current.value = '';
+  };
+
+  const prepareSelectedRestoreText = async (text: string) => {
+    setPreparedRestore(prepareReplaceRestore(parseBackupJson(text)));
   };
 
   const handleRestoreFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,17 +178,51 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!file) return;
     setIsPreparingRestore(true);
     try {
-      setPreparedRestore(prepareReplaceRestore(parseBackupJson(await file.text())));
+      await prepareSelectedRestoreText(await file.text());
     } catch (error) {
       setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
     } finally {
       setIsPreparingRestore(false);
       if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+      if (recoveryFileInputRef.current) recoveryFileInputRef.current.value = '';
     }
   };
 
+  const handleRecoverySelection = async () => {
+    if (isPreparingRestore || isRestoring) return;
+    resetRestore();
+    setRestoreStatus(null);
+    if (!isDesktop()) {
+      recoveryFileInputRef.current?.click();
+      return;
+    }
+    setIsPreparingRestore(true);
+    try {
+      const selected = await desktopBridge.openFile({
+        title: 'Select the pre-restore safety backup again',
+        buttonLabel: 'Select Safety Backup',
+      });
+      if (selected.cancelled || typeof selected.content !== 'string') {
+        setRestoreStatus({ kind: 'info', message: 'Recovery selection cancelled. No data was changed.' });
+        return;
+      }
+      await prepareSelectedRestoreText(selected.content);
+    } catch (error) {
+      setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
+    } finally {
+      setIsPreparingRestore(false);
+    }
+  };
+
+  useEffect(() => {
+    const requestRecovery = () => void handleRecoverySelection();
+    window.addEventListener(REQUEST_SAFETY_BACKUP_RECOVERY_EVENT, requestRecovery);
+    return () => window.removeEventListener(REQUEST_SAFETY_BACKUP_RECOVERY_EVENT, requestRecovery);
+  });
+
   const handleCreateRestoreSafetyBackup = async () => {
-    if (!preparedRestore || isRestoring) return;
+    if (!preparedRestore || isRestoring || restoreOperationRef.current) return;
+    restoreOperationRef.current = true;
     setIsRestoring(true);
     setRestoreStatus(null);
     try {
@@ -230,16 +276,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } catch (error) {
       setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
     } finally {
+      restoreOperationRef.current = false;
       setIsRestoring(false);
     }
   };
 
   const handleConfirmReplaceRestore = async () => {
-    if (!preparedRestore || !safetyReceipt || isRestoring) return;
+    if (!preparedRestore || !safetyReceipt || isRestoring || restoreOperationRef.current) return;
+    restoreOperationRef.current = true;
     setIsRestoring(true);
     setRestoreStatus(null);
     try {
-      await replaceRestore(preparedRestore, { safetyReceipt, confirmed: true });
+      await replaceRestore(preparedRestore, {
+        safetyReceipt,
+        confirmed: true,
+        refresh: async () => refreshFromIndexedDb(),
+      });
       resetRestore();
       setRestoreStatus({
         kind: 'success',
@@ -248,6 +300,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } catch (error) {
       setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
     } finally {
+      restoreOperationRef.current = false;
       setIsRestoring(false);
     }
   };
@@ -440,7 +493,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Restore a versioned 14-table backup. This completely replaces all application data
                 and requires a verified safety backup plus deliberate confirmation.
               </p>
+              {recoveryPending && (
+                <p className="mt-2 text-xs font-medium text-[var(--accent-amber)]">
+                  Recovery mode is active. Select the previously saved safety backup again;
+                  Aether does not retain an old browser file or desktop path.
+                </p>
+              )}
             </div>
+
+            <input
+              ref={recoveryFileInputRef}
+              aria-label="Select safety backup for deliberate recovery"
+              type="file"
+              accept=".json,application/json"
+              disabled={isPreparingRestore || isRestoring}
+              onChange={handleRestoreFileSelection}
+              className="sr-only"
+            />
 
             <input
               ref={restoreFileInputRef}
@@ -462,6 +531,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-sm font-semibold text-[var(--text-primary)]">
                   Warning: this replaces all application data
                 </p>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Selected backup: {preparedRestore.backup.exportedAt}. It contains{' '}
+                  {Object.values(preparedRestore.incomingCounts).reduce((sum, count) => sum + count, 0)}{' '}
+                  records across 14 tables.
+                </p>
+                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {Object.entries(preparedRestore.incomingCounts).map(([table, count]) => (
+                    <div key={table} className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
+                      <dt className="text-[10px] uppercase text-[var(--text-muted)]">{table}</dt>
+                      <dd className="text-sm font-semibold text-[var(--text-primary)]">{count}</dd>
+                    </div>
+                  ))}
+                </dl>
                 {!safetyReceipt ? (
                   <Button
                     variant="secondary"

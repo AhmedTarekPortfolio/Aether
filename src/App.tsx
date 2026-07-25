@@ -6,6 +6,7 @@ import { TopHeader } from './components/layout/TopHeader';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { ExplainabilityModal } from './components/common/ExplainabilityModal';
 import { ToastProvider } from './components/ui/Toast';
+import { RestoreRecoveryWarning } from './components/common/RestoreRecoveryWarning';
 
 import { HomeView } from './views/HomeView';
 import { PlanView } from './views/PlanView';
@@ -21,6 +22,14 @@ export function AppContent() {
 
   // Synchronize HTML class with active theme using extracted useTheme hook
   const { toggleTheme } = useTheme(store.userProfile || null, store.updateProfile);
+
+  if (!store.initialized) {
+    return (
+      <div role="status" className="min-h-screen bg-[var(--bg-primary)] p-8 text-[var(--text-primary)]">
+        Verifying local data…
+      </div>
+    );
+  }
 
   const handleStartFocusWithTask = (taskId?: string) => {
     if (taskId) store.setActiveFocusTaskId(taskId);
@@ -45,6 +54,10 @@ export function AppContent() {
 
       {/* Main Content Viewport */}
       <div className="flex-1 flex flex-col min-w-0">
+        <RestoreRecoveryWarning
+          onOpenRecovery={() => store.setActiveTab('settings')}
+          refreshFromIndexedDb={store.refreshFromIndexedDb}
+        />
         <TopHeader
           activeTab={store.activeTab}
           userProfile={store.userProfile || null}
@@ -133,6 +146,7 @@ export function AppContent() {
             <SettingsView
               userProfile={store.userProfile || null}
               onUpdateProfile={store.updateProfile}
+              refreshFromIndexedDb={store.refreshFromIndexedDb}
             />
           )}
         </main>
