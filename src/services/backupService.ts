@@ -13,6 +13,7 @@ import {
   AI_EXPLANATION_FIELD_ALLOWLIST,
   BACKUP_TOP_LEVEL_KEYS,
   GENERATION_STATUSES,
+  LEGACY_BACKUP_TABLES,
   PERSISTENCE_TABLES,
   RELATIONSHIP_CONTRACTS,
   TABLE_FIELD_ALLOWLISTS,
@@ -20,6 +21,7 @@ import {
   type AetherBackupDataV2,
   type AetherBackupRecordCounts,
   type AetherBackupV2,
+  type LegacyBackupTableName,
   type PersistenceRecordMap,
   type PersistenceTableName,
 } from '../types';
@@ -163,6 +165,47 @@ export interface ExportFullBackupOptions {
   download?: (json: string, filename: string) => void | Promise<void>;
   knownProviderProfileIds?: readonly string[];
 }
+
+export type LegacyBackupData = {
+  [TableName in LegacyBackupTableName]: PersistenceRecordMap[TableName][];
+};
+
+export interface LegacyImportSummary {
+  incomingCounts: Record<LegacyBackupTableName, number>;
+  replacementCounts: Record<LegacyBackupTableName, number>;
+  newCounts: Record<LegacyBackupTableName, number>;
+  totalIncoming: number;
+}
+
+export interface PreparedLegacyImport {
+  format: 'legacy-v1';
+  data: LegacyBackupData;
+  warnings: string[];
+  summary: LegacyImportSummary;
+}
+
+export interface LegacyImportResult {
+  summary: LegacyImportSummary;
+  warnings: string[];
+}
+
+export interface LegacyImportOptions {
+  database?: AetherDatabase;
+  refresh?: () => void | Promise<void>;
+}
+
+export class LegacyImportCommittedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LegacyImportCommittedError';
+  }
+}
+
+const LEGACY_OMITTED_TABLES = PERSISTENCE_TABLES.filter(
+  (table): table is Exclude<PersistenceTableName, LegacyBackupTableName> => (
+    !(LEGACY_BACKUP_TABLES as readonly string[]).includes(table)
+  ),
+);
 
 function fail(message: string): never {
   throw new BackupValidationError(message);
@@ -701,4 +744,394 @@ export async function exportFullBackup(
 export function getBackupErrorMessage(error: unknown): string {
   if (error instanceof BackupValidationError) return error.message;
   return 'Complete backup could not be created. Your data was not changed.';
+}
+
+export type BackupFormatClassification = 'legacy-v1' | 'version-2' | 'unsupported';
+
+export function parseBackupJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    fail('The selected file is not valid JSON. No data was changed.');
+  }
+}
+
+export function classifyBackupFormat(value: unknown): BackupFormatClassification {
+  if (!isPlainObject(value)) return 'unsupported';
+  if (value.format === AETHER_BACKUP_FORMAT) return 'version-2';
+  if (
+    Object.prototype.hasOwnProperty.call(value, 'format')
+    || (
+      Object.prototype.hasOwnProperty.call(value, 'version')
+      && value.version !== 1
+    )
+  ) {
+    return 'unsupported';
+  }
+  return LEGACY_BACKUP_TABLES.every((table) => (
+    Object.prototype.hasOwnProperty.call(value, table)
+    && Array.isArray(value[table])
+  ))
+    ? 'legacy-v1'
+    : 'unsupported';
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (
+    typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+  ) {
+    return false;
+  }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+export function validateLegacyBackup(value: unknown): {
+  data: LegacyBackupData;
+  warnings: string[];
+} {
+  if (!isPlainObject(value)) {
+    fail('The selected file is not a supported legacy backup object. No data was changed.');
+  }
+  if (value.format === AETHER_BACKUP_FORMAT) {
+    fail('Version 2 backups cannot be imported through the legacy workspace importer.');
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'format')) {
+    fail('The selected file uses an unsupported backup format. No data was changed.');
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, 'version')
+    && value.version !== 1
+  ) {
+    fail('The selected file uses an unsupported backup version. No data was changed.');
+  }
+
+  for (const table of LEGACY_BACKUP_TABLES) {
+    if (!Object.prototype.hasOwnProperty.call(value, table)) {
+      fail(`The legacy backup is missing the required ${table} table.`);
+    }
+    if (!Array.isArray(value[table])) {
+      fail(`The legacy backup ${table} table must be an array.`);
+    }
+  }
+
+  const warnings: string[] = [];
+  const knownTopLevelFields = new Set<string>([
+    ...LEGACY_BACKUP_TABLES,
+    'exportedAt',
+    'version',
+  ]);
+  let ignoredTopLevelFields = 0;
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (knownTopLevelFields.has(key)) continue;
+    const category = prohibitedFieldCategory(key);
+    if (category) fail(`Legacy backup metadata contains a prohibited ${category} field.`);
+    scanForSecrets(nestedValue, 'Legacy backup metadata');
+    ignoredTopLevelFields += 1;
+  }
+  if (ignoredTopLevelFields > 0) {
+    warnings.push(
+      `Ignored ${ignoredTopLevelFields} benign unknown top-level field${
+        ignoredTopLevelFields === 1 ? '' : 's'
+      }.`,
+    );
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(value, 'exportedAt')) {
+    warnings.push('Legacy exportedAt is missing and was treated as informational.');
+  } else {
+    scanForSecrets(value.exportedAt, 'Legacy export timestamp');
+    if (!isCanonicalIsoTimestamp(value.exportedAt)) {
+      warnings.push('Legacy exportedAt is invalid or noncanonical and was ignored.');
+    }
+  }
+
+  const data: Partial<Record<LegacyBackupTableName, unknown[]>> = {};
+  for (const table of LEGACY_BACKUP_TABLES) {
+    const records = value[table] as unknown[];
+    const ids = new Set<string>();
+    let ignoredRecordFields = 0;
+    const sanitizedRecords = records.map((recordValue, index) => {
+      if (!isPlainObject(recordValue)) {
+        fail(`${table} record #${index + 1} is not an object.`);
+      }
+      const context = `${table} ${safeRecordLabel(recordValue, index)}`;
+      scanForSecrets(recordValue, context);
+      const allowlist = TABLE_FIELD_ALLOWLISTS[table] as readonly string[];
+      const allowed = new Set(allowlist);
+      const sanitized: PlainObject = {};
+      for (const [key, fieldValue] of Object.entries(recordValue)) {
+        if (!allowed.has(key)) {
+          ignoredRecordFields += 1;
+          continue;
+        }
+        sanitized[key] = fieldValue;
+      }
+      validateRecord(table, sanitized, index);
+      if (ids.has(sanitized.id as string)) {
+        fail(`${context} has a duplicate id.`);
+      }
+      ids.add(sanitized.id as string);
+      return sanitized as unknown as PersistenceRecordMap[typeof table];
+    });
+    if (ignoredRecordFields > 0) {
+      warnings.push(
+        `Ignored ${ignoredRecordFields} benign unknown field${
+          ignoredRecordFields === 1 ? '' : 's'
+        } from ${table} records.`,
+      );
+    }
+    data[table] = sanitizedRecords;
+  }
+
+  return { data: data as LegacyBackupData, warnings };
+}
+
+async function readLegacyTables(database: AetherDatabase): Promise<LegacyBackupData> {
+  const entries = await Promise.all(LEGACY_BACKUP_TABLES.map(async (table) => [
+    table,
+    await database.table(table).toArray(),
+  ] as const));
+  return Object.fromEntries(entries) as LegacyBackupData;
+}
+
+export async function readLegacySnapshot(
+  database: AetherDatabase = db,
+): Promise<LegacyBackupData> {
+  const tables: Table[] = LEGACY_BACKUP_TABLES.map((table) => database.table(table));
+  return database.transaction('r', tables, () => readLegacyTables(database));
+}
+
+export function buildLegacyPostMergeView(
+  current: LegacyBackupData,
+  incoming: LegacyBackupData,
+): LegacyBackupData {
+  const merged: Partial<Record<LegacyBackupTableName, unknown[]>> = {};
+  for (const table of LEGACY_BACKUP_TABLES) {
+    const records = new Map<string, PersistenceRecordMap[typeof table]>(
+      current[table].map((record) => [record.id, record]),
+    );
+    incoming[table].forEach((record) => records.set(record.id, record));
+    merged[table] = [...records.values()];
+  }
+  return merged as LegacyBackupData;
+}
+
+export function validateLegacyRelationships(snapshot: LegacyBackupData): void {
+  const parentIds = Object.fromEntries(LEGACY_BACKUP_TABLES.map((table) => [
+    table,
+    new Set(snapshot[table].map((record) => record.id)),
+  ])) as Record<LegacyBackupTableName, Set<string>>;
+  const representedTables = new Set<string>(LEGACY_BACKUP_TABLES);
+
+  for (const relationship of RELATIONSHIP_CONTRACTS) {
+    if (
+      !representedTables.has(relationship.childTable)
+      || !representedTables.has(relationship.parentTable)
+    ) {
+      continue;
+    }
+    const childTable = relationship.childTable as LegacyBackupTableName;
+    const parentTable = relationship.parentTable as LegacyBackupTableName;
+    const records = snapshot[childTable] as readonly unknown[];
+    records.forEach((recordValue, index) => {
+      const record = recordValue as PlainObject;
+      const reference = record[String(relationship.childField)];
+      const context = `${childTable} ${safeRecordLabel(record, index)}`;
+      if (reference === undefined) {
+        if (relationship.required) fail(`${context} is missing a required relationship.`);
+        return;
+      }
+      if (reference === null) {
+        if (relationship.serializedAbsence !== 'omitted-or-null') {
+          fail(`${context} has an invalid relationship.`);
+        }
+        return;
+      }
+      if (typeof reference !== 'string' || reference.length === 0) {
+        fail(`${context} has an invalid relationship.`);
+      }
+      if (!parentIds[parentTable].has(reference)) {
+        fail(`${context} has a dangling ${String(relationship.childField)} relationship.`);
+      }
+    });
+  }
+}
+
+function validateUniqueLegacyField(
+  records: readonly PlainObject[],
+  field: string,
+  context: string,
+): void {
+  const owners = new Map<string, string>();
+  records.forEach((record, index) => {
+    const value = record[field];
+    if (typeof value !== 'string') return;
+    const existingOwner = owners.get(value);
+    if (existingOwner !== undefined && existingOwner !== record.id) {
+      fail(`${context} contains a conflicting unique ${field} value.`);
+    }
+    owners.set(value, typeof record.id === 'string' ? record.id : `#${index + 1}`);
+  });
+}
+
+export function validateLegacyUniqueIndexes(snapshot: LegacyBackupData): void {
+  validateUniqueLegacyField(
+    snapshot.users as unknown as PlainObject[],
+    'email',
+    'Legacy users merge',
+  );
+  validateUniqueLegacyField(
+    snapshot.settings as unknown as PlainObject[],
+    'userId',
+    'Legacy settings merge',
+  );
+}
+
+function buildLegacyImportSummary(
+  current: LegacyBackupData,
+  incoming: LegacyBackupData,
+): LegacyImportSummary {
+  const incomingCounts = {} as Record<LegacyBackupTableName, number>;
+  const replacementCounts = {} as Record<LegacyBackupTableName, number>;
+  const newCounts = {} as Record<LegacyBackupTableName, number>;
+  let totalIncoming = 0;
+  for (const table of LEGACY_BACKUP_TABLES) {
+    const currentIds = new Set(current[table].map((record) => record.id));
+    incomingCounts[table] = incoming[table].length;
+    replacementCounts[table] = incoming[table].filter((record) => currentIds.has(record.id)).length;
+    newCounts[table] = incomingCounts[table] - replacementCounts[table];
+    totalIncoming += incomingCounts[table];
+  }
+  return { incomingCounts, replacementCounts, newCounts, totalIncoming };
+}
+
+export async function prepareLegacyImport(
+  value: unknown,
+  database: AetherDatabase = db,
+): Promise<PreparedLegacyImport> {
+  const classification = classifyBackupFormat(value);
+  if (classification === 'version-2') {
+    fail('Version 2 backups cannot be imported through the legacy workspace importer.');
+  }
+  const { data, warnings } = validateLegacyBackup(value);
+  const current = await readLegacySnapshot(database);
+  const postMerge = buildLegacyPostMergeView(current, data);
+  validateLegacyRelationships(postMerge);
+  validateLegacyUniqueIndexes(postMerge);
+  return {
+    format: 'legacy-v1',
+    data,
+    warnings,
+    summary: buildLegacyImportSummary(current, data),
+  };
+}
+
+type OmittedSnapshot = Record<
+  Exclude<PersistenceTableName, LegacyBackupTableName>,
+  unknown[]
+>;
+
+async function readLegacyOmittedSnapshot(database: AetherDatabase): Promise<OmittedSnapshot> {
+  const tables: Table[] = LEGACY_OMITTED_TABLES.map((table) => database.table(table));
+  return database.transaction('r', tables, async () => {
+    const entries = await Promise.all(LEGACY_OMITTED_TABLES.map(async (table) => [
+      table,
+      await database.table(table).toArray(),
+    ] as const));
+    return Object.fromEntries(entries) as OmittedSnapshot;
+  });
+}
+
+function samePersistedValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function verifyLegacyImportState(
+  before: LegacyBackupData,
+  after: LegacyBackupData,
+  incoming: LegacyBackupData,
+): void {
+  for (const table of LEGACY_BACKUP_TABLES) {
+    const afterById = new Map(after[table].map((record) => [record.id, record]));
+    const incomingIds = new Set(incoming[table].map((record) => record.id));
+    for (const record of incoming[table]) {
+      if (!samePersistedValue(afterById.get(record.id), record)) {
+        throw new LegacyImportCommittedError(
+          'Legacy import committed, but post-write verification failed. Reload the application before retrying.',
+        );
+      }
+    }
+    for (const record of before[table]) {
+      if (
+        !incomingIds.has(record.id)
+        && !samePersistedValue(afterById.get(record.id), record)
+      ) {
+        throw new LegacyImportCommittedError(
+          'Legacy import committed, but preservation verification failed. Reload the application before retrying.',
+        );
+      }
+    }
+  }
+}
+
+export async function importLegacyBackup(
+  prepared: PreparedLegacyImport,
+  options: LegacyImportOptions = {},
+): Promise<LegacyImportResult> {
+  const database = options.database ?? db;
+  const omittedBefore = await readLegacyOmittedSnapshot(database);
+  const transactionTables: Table[] = LEGACY_BACKUP_TABLES.map(
+    (table) => database.table(table),
+  );
+  let current: LegacyBackupData;
+
+  try {
+    await database.transaction('rw', transactionTables, async () => {
+      current = await readLegacyTables(database);
+      const postMerge = buildLegacyPostMergeView(current, prepared.data);
+      validateLegacyRelationships(postMerge);
+      validateLegacyUniqueIndexes(postMerge);
+      for (const table of LEGACY_BACKUP_TABLES) {
+        if (prepared.data[table].length > 0) {
+          await database.table(table).bulkPut(prepared.data[table]);
+        }
+      }
+    });
+  } catch (error) {
+    if (error instanceof BackupValidationError) throw error;
+    fail('Legacy import transaction failed and was rolled back. No data was changed.');
+  }
+
+  const after = await readLegacySnapshot(database);
+  // `current` is assigned before the first write in the successful transaction.
+  const verifiedCurrent = current!;
+  verifyLegacyImportState(verifiedCurrent, after, prepared.data);
+  const omittedAfter = await readLegacyOmittedSnapshot(database);
+  if (!samePersistedValue(omittedAfter, omittedBefore)) {
+    throw new LegacyImportCommittedError(
+      'Legacy import committed, but omitted-table preservation verification failed.',
+    );
+  }
+
+  try {
+    await options.refresh?.();
+  } catch {
+    throw new LegacyImportCommittedError(
+      'Legacy import committed and verified, but the application refresh failed. Reload to view current data.',
+    );
+  }
+
+  return {
+    summary: buildLegacyImportSummary(verifiedCurrent, prepared.data),
+    warnings: [...prepared.warnings],
+  };
+}
+
+export function getLegacyImportErrorMessage(error: unknown): string {
+  if (error instanceof BackupValidationError || error instanceof LegacyImportCommittedError) {
+    return error.message;
+  }
+  return 'Legacy workspace import could not be completed safely. No credential details were exposed.';
 }

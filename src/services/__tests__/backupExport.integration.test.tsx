@@ -38,7 +38,7 @@ describe('WP-04 Settings complete-backup integration', () => {
     }));
     await openSystemDataTab();
 
-    fireEvent.click(screen.getByRole('button', { name: /export complete version 2 backup/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
     expect(screen.getByRole('button', { name: /validating complete backup/i })).toBeDisabled();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
 
@@ -57,7 +57,7 @@ describe('WP-04 Settings complete-backup integration', () => {
     });
     await openSystemDataTab();
 
-    fireEvent.click(screen.getByRole('button', { name: /export complete version 2 backup/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
       /historical AI provider association.*ai-safe/i,
@@ -68,7 +68,7 @@ describe('WP-04 Settings complete-backup integration', () => {
     exportFullBackupMock.mockRejectedValue(new Error('sk-private-value'));
     await openSystemDataTab();
 
-    fireEvent.click(screen.getByRole('button', { name: /export complete version 2 backup/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(
       'Complete backup validation failed safely.',
@@ -77,8 +77,8 @@ describe('WP-04 Settings complete-backup integration', () => {
     expect(screen.queryByText(/sk-private-value/i)).not.toBeInTheDocument();
   });
 
-  it('adds no restore or import controls', async () => {
+  it('adds no Version 2 restore controls', async () => {
     await openSystemDataTab();
-    expect(screen.queryByRole('button', { name: /restore|import/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /restore/i })).not.toBeInTheDocument();
   });
 });

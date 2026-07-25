@@ -127,14 +127,14 @@ describe('WP-02 backup envelope and allowlists', () => {
 
   it('freezes the eight legacy represented tables', () => {
     expect(LEGACY_BACKUP_TABLES).toEqual([
+      'users',
+      'settings',
       'subjects',
       'topics',
       'tasks',
       'notes',
       'flashcards',
       'sessions',
-      'goals',
-      'ai_conversations',
     ]);
   });
 
@@ -223,7 +223,7 @@ describe('WP-02 timestamp and relationship contracts', () => {
       contract.required ? 'required' : contract.serializedAbsence,
       contract.legacyParentScope,
     ])).toEqual([
-      ['settings.userId->users', 'required', 'not-represented'],
+      ['settings.userId->users', 'required', 'incoming-or-current'],
       ['subjects.userId->users', 'omitted', 'incoming-or-current'],
       ['topics.subjectId->subjects', 'required', 'incoming-or-current'],
       ['tasks.userId->users', 'omitted', 'incoming-or-current'],
@@ -237,11 +237,11 @@ describe('WP-02 timestamp and relationship contracts', () => {
       ['sessions.userId->users', 'omitted', 'incoming-or-current'],
       ['sessions.subjectId->subjects', 'omitted-or-null', 'incoming-or-current'],
       ['sessions.taskId->tasks', 'omitted-or-null', 'incoming-or-current'],
-      ['goals.userId->users', 'omitted', 'incoming-or-current'],
-      ['goals.subjectId->subjects', 'omitted-or-null', 'incoming-or-current'],
-      ['ai_conversations.userId->users', 'omitted', 'incoming-or-current'],
-      ['ai_conversations.subjectId->subjects', 'omitted-or-null', 'incoming-or-current'],
-      ['ai_conversations.taskId->tasks', 'omitted-or-null', 'incoming-or-current'],
+      ['goals.userId->users', 'omitted', 'not-represented'],
+      ['goals.subjectId->subjects', 'omitted-or-null', 'not-represented'],
+      ['ai_conversations.userId->users', 'omitted', 'not-represented'],
+      ['ai_conversations.subjectId->subjects', 'omitted-or-null', 'not-represented'],
+      ['ai_conversations.taskId->tasks', 'omitted-or-null', 'not-represented'],
       ['statistics.userId->users', 'omitted', 'not-represented'],
       ['user_achievements.userId->users', 'omitted', 'not-represented'],
       ['user_achievements.achievementId->achievement_definitions', 'required', 'not-represented'],

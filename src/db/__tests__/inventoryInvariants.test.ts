@@ -643,7 +643,7 @@ describe('WP-01 persistence inventory invariants', () => {
     expect(directFiles).toEqual([...EXPECTED_DIRECT_DB_FILES].sort());
   });
 
-  it('distinguishes reactive store reads from writes and complete backup reads', () => {
+  it('distinguishes reactive reads, read-only export, and the bounded legacy import writer', () => {
     const storeSource = read('src/store/useAppStore.ts');
     const directStoreTables = [...storeSource.matchAll(/\bdb\.([a-z_]+)\b/g)]
       .map((match) => match[1])
@@ -658,12 +658,24 @@ describe('WP-01 persistence inventory invariants', () => {
     const exportedTables = [...backupSource.matchAll(/\bdatabase\.([a-z_]+)\.toArray\(\)/g)]
       .map((match) => match[1]);
     expect(exportedTables).toEqual(TABLES);
-    expect(backupSource).not.toMatch(
-      new RegExp(`\\bdatabase\\.(${TABLES.join('|')})\\.(add|put|bulkAdd|bulkPut|update|delete|clear)\\(`),
+    const exportBody = backupSource.slice(
+      backupSource.indexOf('export async function exportFullBackup'),
+      backupSource.indexOf('export function getBackupErrorMessage'),
     );
+    expect(exportBody).not.toMatch(/\.(add|put|bulkAdd|bulkPut|update|delete|clear)\(/);
+
+    const importBody = backupSource.slice(
+      backupSource.indexOf('export async function importLegacyBackup'),
+      backupSource.indexOf('export function getLegacyImportErrorMessage'),
+    );
+    expect(importBody).toContain("database.transaction('rw', transactionTables");
+    expect(importBody).toContain('database.table(table).bulkPut(prepared.data[table])');
+    expect(importBody).not.toMatch(/\.(add|put|bulkAdd|update|delete|clear)\(/);
 
     const settingsSource = read('src/views/SettingsView.tsx');
     expect(settingsSource).toContain('exportFullBackup()');
+    expect(settingsSource).toContain('prepareLegacyImport(parsed)');
+    expect(settingsSource).toContain('importLegacyBackup(preparedLegacyImport)');
     expect(settingsSource).not.toMatch(/\bdb\.[a-z_]+\.toArray\(\)/);
   });
 

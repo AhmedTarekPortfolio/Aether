@@ -37,14 +37,14 @@ export const PERSISTENCE_TABLES = [
 ] as const;
 
 export const LEGACY_BACKUP_TABLES = [
+  'users',
+  'settings',
   'subjects',
   'topics',
   'tasks',
   'notes',
   'flashcards',
   'sessions',
-  'goals',
-  'ai_conversations',
 ] as const;
 
 export type PersistenceTableName = (typeof PERSISTENCE_TABLES)[number];
@@ -355,7 +355,7 @@ export type RelationshipContract = {
 }[PersistenceTableName];
 
 export const RELATIONSHIP_CONTRACTS = [
-  { childTable: 'settings', childField: 'userId', parentTable: 'users', parentField: 'id', required: true, serializedAbsence: 'none', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
+  { childTable: 'settings', childField: 'userId', parentTable: 'users', parentField: 'id', required: true, serializedAbsence: 'none', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
   { childTable: 'subjects', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
   { childTable: 'topics', childField: 'subjectId', parentTable: 'subjects', parentField: 'id', required: true, serializedAbsence: 'none', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
   { childTable: 'tasks', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
@@ -369,11 +369,11 @@ export const RELATIONSHIP_CONTRACTS = [
   { childTable: 'sessions', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
   { childTable: 'sessions', childField: 'subjectId', parentTable: 'subjects', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
   { childTable: 'sessions', childField: 'taskId', parentTable: 'tasks', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
-  { childTable: 'goals', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
-  { childTable: 'goals', childField: 'subjectId', parentTable: 'subjects', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
-  { childTable: 'ai_conversations', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
-  { childTable: 'ai_conversations', childField: 'subjectId', parentTable: 'subjects', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
-  { childTable: 'ai_conversations', childField: 'taskId', parentTable: 'tasks', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'incoming-or-current', invalidReferencePolicy: 'reject' },
+  { childTable: 'goals', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
+  { childTable: 'goals', childField: 'subjectId', parentTable: 'subjects', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
+  { childTable: 'ai_conversations', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
+  { childTable: 'ai_conversations', childField: 'subjectId', parentTable: 'subjects', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
+  { childTable: 'ai_conversations', childField: 'taskId', parentTable: 'tasks', parentField: 'id', required: false, serializedAbsence: 'omitted-or-null', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
   { childTable: 'statistics', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
   { childTable: 'user_achievements', childField: 'userId', parentTable: 'users', parentField: 'id', required: false, serializedAbsence: 'omitted', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },
   { childTable: 'user_achievements', childField: 'achievementId', parentTable: 'achievement_definitions', parentField: 'id', required: true, serializedAbsence: 'none', version2ParentScope: 'incoming-only', legacyParentScope: 'not-represented', invalidReferencePolicy: 'reject' },

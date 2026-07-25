@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { UserProfile } from '../types';
-import { User, Settings as SettingsIcon, Database, Download, Key, ShieldCheck, Lock } from 'lucide-react';
+import { User, Settings as SettingsIcon, Database, Download, Key, ShieldCheck, Lock, Upload } from 'lucide-react';
 import { ModelSettingsModal } from '../components/ai/ModelSettingsModal';
-import { exportFullBackup, getBackupErrorMessage } from '../services/backupService';
+import {
+  exportFullBackup,
+  getBackupErrorMessage,
+  getLegacyImportErrorMessage,
+  importLegacyBackup,
+  parseBackupJson,
+  prepareLegacyImport,
+  type PreparedLegacyImport,
+} from '../services/backupService';
 
 interface SettingsViewProps {
   userProfile: UserProfile | null;
@@ -23,6 +31,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     kind: 'success' | 'error';
     message: string;
   } | null>(null);
+  const [preparedLegacyImport, setPreparedLegacyImport] = useState<PreparedLegacyImport | null>(null);
+  const [isPreparingLegacyImport, setIsPreparingLegacyImport] = useState(false);
+  const [isImportingLegacy, setIsImportingLegacy] = useState(false);
+  const [legacyImportStatus, setLegacyImportStatus] = useState<{
+    kind: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
+  const legacyFileInputRef = useRef<HTMLInputElement>(null);
 
   // Profile Form State
   const [name, setName] = useState(userProfile?.name || 'Alex Rivera');
@@ -64,6 +80,60 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } finally {
       setIsExportingBackup(false);
     }
+  };
+
+  const handleLegacyFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    setPreparedLegacyImport(null);
+    setLegacyImportStatus(null);
+    if (!file) return;
+
+    setIsPreparingLegacyImport(true);
+    try {
+      const parsed = parseBackupJson(await file.text());
+      const prepared = await prepareLegacyImport(parsed);
+      setPreparedLegacyImport(prepared);
+    } catch (error) {
+      setLegacyImportStatus({
+        kind: 'error',
+        message: getLegacyImportErrorMessage(error),
+      });
+    } finally {
+      setIsPreparingLegacyImport(false);
+      if (legacyFileInputRef.current) legacyFileInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmLegacyImport = async () => {
+    if (!preparedLegacyImport) return;
+    setIsImportingLegacy(true);
+    setLegacyImportStatus(null);
+    try {
+      const result = await importLegacyBackup(preparedLegacyImport);
+      setPreparedLegacyImport(null);
+      setLegacyImportStatus({
+        kind: 'success',
+        message: [
+          `Legacy workspace import verified for ${result.summary.totalIncoming} incoming records.`,
+          ...result.warnings,
+        ].join(' '),
+      });
+    } catch (error) {
+      setLegacyImportStatus({
+        kind: 'error',
+        message: getLegacyImportErrorMessage(error),
+      });
+    } finally {
+      setIsImportingLegacy(false);
+    }
+  };
+
+  const handleCancelLegacyImport = () => {
+    setPreparedLegacyImport(null);
+    setLegacyImportStatus({
+      kind: 'info',
+      message: 'Legacy import cancelled. No data was changed.',
+    });
   };
 
   return (
@@ -219,7 +289,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               onClick={handleExportData}
               disabled={isExportingBackup}
             >
-              {isExportingBackup ? 'Validating Complete Backup…' : 'Export Complete Version 2 Backup'}
+              {isExportingBackup ? 'Validating Complete Backup…' : 'Create Complete Backup (Version 2)'}
             </Button>
 
             {backupStatus && (
@@ -232,6 +302,103 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }
               >
                 {backupStatus.message}
+              </p>
+            )}
+          </Card>
+
+          <Card className="p-8 space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Upload className="w-5 h-5 text-[var(--accent-amber)]" />
+                Import Legacy Workspace
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Validate and merge a historical eight-table JSON export. This is not a complete restore.
+              </p>
+            </div>
+
+            <input
+              ref={legacyFileInputRef}
+              aria-label="Select legacy workspace JSON"
+              type="file"
+              accept=".json,application/json"
+              disabled={isPreparingLegacyImport || isImportingLegacy}
+              onChange={handleLegacyFileSelection}
+              className="block w-full text-xs text-[var(--text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--bg-tertiary)] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[var(--text-primary)]"
+            />
+
+            {isPreparingLegacyImport && (
+              <p role="status" className="text-xs text-[var(--text-secondary)]">
+                Validating legacy workspace…
+              </p>
+            )}
+
+            {preparedLegacyImport && (
+              <div
+                aria-label="Legacy import confirmation"
+                className="space-y-4 rounded-xl border border-[var(--accent-amber)]/30 bg-[var(--accent-amber)]/10 p-4"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">
+                    Confirm partial merge of {preparedLegacyImport.summary.totalIncoming} records
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                    Matching IDs will be replaced. Existing records absent from this file remain.
+                    Goals, AI conversations, statistics, achievement definitions, user achievements,
+                    and notifications are untouched.
+                  </p>
+                </div>
+
+                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {Object.entries(preparedLegacyImport.summary.incomingCounts).map(([table, count]) => (
+                    <div key={table} className="rounded-lg bg-[var(--bg-tertiary)] px-3 py-2">
+                      <dt className="text-[10px] uppercase text-[var(--text-muted)]">{table}</dt>
+                      <dd className="text-sm font-semibold text-[var(--text-primary)]">{count}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                {preparedLegacyImport.warnings.length > 0 && (
+                  <ul className="space-y-1 text-xs text-[var(--accent-amber)]">
+                    {preparedLegacyImport.warnings.map((warning, index) => (
+                      <li key={`${index}-${warning}`}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="amber"
+                    size="sm"
+                    disabled={isImportingLegacy}
+                    onClick={handleConfirmLegacyImport}
+                  >
+                    {isImportingLegacy ? 'Importing and Verifying…' : 'Confirm Legacy Import'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isImportingLegacy}
+                    onClick={handleCancelLegacyImport}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {legacyImportStatus && (
+              <p
+                role={legacyImportStatus.kind === 'error' ? 'alert' : 'status'}
+                className={
+                  legacyImportStatus.kind === 'error'
+                    ? 'text-xs font-medium text-[var(--accent-rose)]'
+                    : legacyImportStatus.kind === 'success'
+                      ? 'text-xs font-medium text-[var(--accent-emerald)]'
+                      : 'text-xs font-medium text-[var(--text-secondary)]'
+                }
+              >
+                {legacyImportStatus.message}
               </p>
             )}
           </Card>
