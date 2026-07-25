@@ -6,11 +6,17 @@ const {
   prepareReplaceRestoreMock,
   createPreRestoreSafetyBackupMock,
   replaceRestoreMock,
+  desktopRuntime,
+  desktopSaveFileMock,
+  desktopOpenFileMock,
 } = vi.hoisted(() => ({
   exportFullBackupMock: vi.fn(),
   prepareReplaceRestoreMock: vi.fn(),
   createPreRestoreSafetyBackupMock: vi.fn(),
   replaceRestoreMock: vi.fn(),
+  desktopRuntime: { enabled: false },
+  desktopSaveFileMock: vi.fn(),
+  desktopOpenFileMock: vi.fn(),
 }));
 
 vi.mock('../backupService', () => ({
@@ -30,6 +36,17 @@ vi.mock('../../components/ai/ModelSettingsModal', () => ({
   ModelSettingsModal: () => null,
 }));
 
+vi.mock('../../desktop/isDesktop', () => ({
+  isDesktop: () => desktopRuntime.enabled,
+}));
+
+vi.mock('../../desktop/desktopBridge', () => ({
+  desktopBridge: {
+    saveFile: desktopSaveFileMock,
+    openFile: desktopOpenFileMock,
+  },
+}));
+
 import { SettingsView } from '../../views/SettingsView';
 
 describe('WP-04 Settings complete-backup integration', () => {
@@ -38,6 +55,9 @@ describe('WP-04 Settings complete-backup integration', () => {
     prepareReplaceRestoreMock.mockReset();
     createPreRestoreSafetyBackupMock.mockReset();
     replaceRestoreMock.mockReset();
+    desktopRuntime.enabled = false;
+    desktopSaveFileMock.mockReset();
+    desktopOpenFileMock.mockReset();
   });
 
   async function openSystemDataTab(): Promise<void> {
@@ -162,5 +182,88 @@ describe('WP-04 Settings complete-backup integration', () => {
       /could not be completed safely/i,
     ));
     expect(screen.queryByText(/sk-private-provider-secret/i)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a different selected path', 'D:\\backups\\other.json', '{"saved":true}'],
+    ['modified saved content', 'D:\\backups\\safety.json', '{"saved":false}'],
+  ])('blocks Electron replacement when readback has %s', async (_case, filePath, content) => {
+    desktopRuntime.enabled = true;
+    prepareReplaceRestoreMock.mockReturnValue({
+      format: 'version-2',
+      incomingCounts: {},
+      expectedPostRestoreCounts: {},
+      backup: {},
+    });
+    desktopSaveFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'D:\\backups\\safety.json',
+    });
+    desktopOpenFileMock.mockResolvedValue({ cancelled: false, filePath, content });
+    createPreRestoreSafetyBackupMock.mockImplementation(async (delivery) => {
+      const delivered = await delivery.deliver('{"saved":true}', 'safety.json');
+      if (!delivered) throw new Error('Safety backup verification failed.');
+      return {
+        kind: 'verified-safety-backup',
+        runtime: 'electron',
+        completedAt: '2026-07-25T00:00:00.000Z',
+      };
+    });
+    await openSystemDataTab();
+    const input = screen.getByLabelText(/select version 2 complete backup json/i);
+    fireEvent.change(input, {
+      target: { files: [new File(['{}'], 'complete.json', { type: 'application/json' })] },
+    });
+    await screen.findByLabelText(/version 2 restore confirmation/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /create required safety backup/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(
+      /could not be completed safely/i,
+    ));
+    expect(screen.queryByLabelText(/i have saved my safety backup/i)).not.toBeInTheDocument();
+    expect(replaceRestoreMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts Electron safety delivery only after exact saved-file readback validation', async () => {
+    desktopRuntime.enabled = true;
+    prepareReplaceRestoreMock.mockReturnValue({
+      format: 'version-2',
+      incomingCounts: {},
+      expectedPostRestoreCounts: {},
+      backup: {},
+    });
+    desktopSaveFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'D:\\backups\\safety.json',
+    });
+    desktopOpenFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'D:\\backups\\safety.json',
+      content: '{"saved":true}',
+    });
+    createPreRestoreSafetyBackupMock.mockImplementation(async (delivery) => {
+      const delivered = await delivery.deliver('{"saved":true}', 'safety.json');
+      if (!delivered) throw new Error('Safety backup verification failed.');
+      return {
+        kind: 'verified-safety-backup',
+        runtime: 'electron',
+        completedAt: '2026-07-25T00:00:00.000Z',
+      };
+    });
+    await openSystemDataTab();
+    const input = screen.getByLabelText(/select version 2 complete backup json/i);
+    fireEvent.change(input, {
+      target: { files: [new File(['{}'], 'complete.json', { type: 'application/json' })] },
+    });
+    await screen.findByLabelText(/version 2 restore confirmation/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /create required safety backup/i }));
+
+    await screen.findByLabelText(/i have saved my safety backup/i);
+    expect(desktopSaveFileMock).toHaveBeenCalledOnce();
+    expect(desktopOpenFileMock).toHaveBeenCalledOnce();
+    expect(prepareReplaceRestoreMock).toHaveBeenCalledTimes(2);
+    expect(replaceRestoreMock).not.toHaveBeenCalled();
   });
 });

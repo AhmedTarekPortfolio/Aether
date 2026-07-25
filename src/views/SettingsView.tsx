@@ -214,6 +214,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             readback.cancelled
             || readback.filePath !== saved.filePath
             || typeof readback.content !== 'string'
+            || readback.content !== json
           ) return false;
           prepareReplaceRestore(parseBackupJson(readback.content));
           return true;

@@ -123,6 +123,26 @@ describe('WP-06 safety and atomic replacement', () => {
     expect((await readBackupSnapshot(db)).users[0].id).toBe('before-user');
   });
 
+  it('rejects a structurally similar plain-object safety receipt', async () => {
+    const db = await database();
+    await seed(db, snapshot('before'));
+    const before = await readBackupSnapshot(db);
+    const prepared = prepareReplaceRestore(buildBackupV2(snapshot('incoming')));
+    const forged = {
+      kind: 'verified-safety-backup',
+      runtime: 'browser',
+      completedAt: new Date().toISOString(),
+      token: Symbol('verified-safety-backup'),
+    } as const;
+
+    await expect(replaceRestore(prepared, {
+      database: db,
+      safetyReceipt: forged,
+      confirmed: true,
+    })).rejects.toThrow(/completed safety backup/i);
+    expect(await readBackupSnapshot(db)).toEqual(before);
+  });
+
   it('delivers safety backup before replacement and follows explicit orders', async () => {
     const db = await database();
     await seed(db, snapshot('before'));
