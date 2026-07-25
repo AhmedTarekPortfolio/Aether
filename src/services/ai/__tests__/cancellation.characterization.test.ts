@@ -46,6 +46,7 @@ describe('Phase 0 Production Cancellation Characterization Tests', () => {
     const prepared = await aiOrchestrator.prepare({
       prompt: 'Test cancellation prompt',
       mode: 'tutor',
+      userId: 'u1',
       selectedResourceIds: [],
     });
 

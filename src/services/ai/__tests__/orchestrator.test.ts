@@ -21,6 +21,7 @@ describe('AI Orchestrator (FocusForge Architecture - src/services/ai/orchestrato
       const result = await aiOrchestrator.prepare({
         prompt: 'What is photosynthesis?',
         mode: 'tutor',
+        userId: 'u1',
         privacyMode: 'standard',
       });
 
@@ -37,6 +38,7 @@ describe('AI Orchestrator (FocusForge Architecture - src/services/ai/orchestrato
       const result = await aiOrchestrator.prepare({
         prompt: 'Explain calculus',
         mode: 'tutor',
+        userId: 'u1',
         privacyMode: 'ask_before_sending',
       });
 
@@ -50,6 +52,7 @@ describe('AI Orchestrator (FocusForge Architecture - src/services/ai/orchestrato
       const result = await aiOrchestrator.prepare({
         prompt: 'Search study notes',
         mode: 'tutor',
+        userId: 'u1',
         privacyMode: 'local_tools_only',
       });
 
@@ -71,6 +74,7 @@ describe('AI Orchestrator (FocusForge Architecture - src/services/ai/orchestrato
       const result = await aiOrchestrator.prepare({
         prompt: 'New question',
         mode: 'tutor',
+        userId: 'u1',
         conversationHistory: mockHistory,
       });
 
@@ -104,6 +108,7 @@ describe('AI Orchestrator (FocusForge Architecture - src/services/ai/orchestrato
       const prepared = await aiOrchestrator.prepare({
         prompt: 'Explain photosynthesis',
         mode: 'tutor',
+        userId: 'u1',
         profileId: 'prof_test_orch',
       });
 

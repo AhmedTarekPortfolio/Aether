@@ -36,6 +36,7 @@ import {
   ShieldAlert,
   Brain,
   Search,
+  type LucideIcon,
 } from 'lucide-react';
 
 export type GenerationState =
@@ -47,12 +48,22 @@ export type GenerationState =
   | 'stopped'
   | 'failed';
 
+const AI_MODE_OPTIONS: Array<{
+  id: AIInteraction['mode'];
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { id: 'tutor', label: 'Chat', icon: MessageSquare },
+  { id: 'ask_resources', label: 'Ask Resources', icon: BookOpen },
+  { id: 'explain', label: 'Explain', icon: HelpCircle },
+  { id: 'summarize', label: 'Summarize', icon: PenTool },
+];
+
 interface AIAssistantViewProps {
   aiChats: AIInteraction[];
   subjects: Subject[];
   tasks?: Task[];
   userProfile: UserProfile | null;
-  onAddAIMessage: (msg: Omit<AIInteraction, 'id' | 'timestamp'>) => Promise<void>;
   onClearChats: () => Promise<void>;
 }
 
@@ -61,7 +72,6 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   subjects,
   tasks = [],
   userProfile,
-  onAddAIMessage,
   onClearChats,
 }) => {
   const { showToast } = useToast();
@@ -141,6 +151,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       const preparedResult = await aiOrchestrator.prepare({
         prompt: textToSend,
         mode,
+        userId: userProfile?.id || 'default_user',
         profileId: activeProfile.id,
         subjectId: selectedSubjectId || undefined,
         taskId: selectedTaskId || undefined,
@@ -151,12 +162,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       if (preparedResult.type === 'local_only_result') {
         // Local Tools Only or No-Evidence Result
         setGenerationState('saving_user');
-        await onAddAIMessage({
-          mode,
-          prompt: textToSend,
-          response: preparedResult.message,
-          subjectId: selectedSubjectId || undefined,
-        });
+        await aiOrchestrator.persistLocalOnlyResult(preparedResult);
         setPrompt('');
         setGenerationState('idle');
         return;
@@ -173,6 +179,10 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       // Execute request immediately
       await executePreparedRequest(preparedResult, textToSend);
     } catch (err: any) {
+      if (typeof err?.content === 'string' && err.content.trim()) {
+        setUnsavedAssistantText(err.content);
+        showToast('Save Warning', 'warning', 'Generated response received but failed to save to database.');
+      }
       const norm = normalizeAIError(err);
       setProviderError({ title: norm.title, message: norm.message, actionRequired: norm.actionRequired });
       setGenerationState('failed');
@@ -191,7 +201,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
 
     try {
       const shouldStream = prepared.profileConfig.type !== 'local' && prepared.profileConfig.stream !== false;
-      const response = await aiOrchestrator.send(prepared, shouldStream ? {
+      await aiOrchestrator.send(prepared, shouldStream ? {
         streamHandlers: {
           onToken: (token) => {
             if (activeRequestIdRef.current === prepared.requestId) {
@@ -215,29 +225,17 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
         },
       } : undefined);
 
-      // Save the completed conversation.
-      setGenerationState('saving_assistant');
-      try {
-        await onAddAIMessage({
-          mode,
-          prompt: userPromptText,
-          response: response.content,
-          explanation: response.reasoning ? { confidence: 0.9, factors: [response.reasoning] } : undefined,
-          subjectId: selectedSubjectId || undefined,
-        });
-        setGenerationState('idle');
-        setStreamingText('');
-        setStreamingReasoning('');
-        setPendingPrompt('');
-        activeRequestIdRef.current = null;
-      } catch (err: any) {
-        setUnsavedAssistantText(response.content);
-        setGenerationState('failed');
-        setPendingPrompt('');
-        showToast('Save Warning', 'warning', 'Generated response received but failed to save to database.');
-      }
+      setGenerationState('idle');
+      setStreamingText('');
+      setStreamingReasoning('');
+      setPendingPrompt('');
+      activeRequestIdRef.current = null;
     } catch (err: any) {
       if (activeRequestIdRef.current === prepared.requestId) {
+        if (typeof err?.content === 'string' && err.content.trim()) {
+          setUnsavedAssistantText(err.content);
+          showToast('Save Warning', 'warning', 'Generated response received but failed to save to database.');
+        }
         const norm = normalizeAIError(err);
         setProviderError({ title: norm.title, message: norm.message, actionRequired: norm.actionRequired });
         setGenerationState(err.message?.includes('cancelled') ? 'stopped' : 'failed');
@@ -287,19 +285,14 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       <header className="p-3 sm:p-4 border-b border-[var(--border-glass)] bg-[var(--bg-secondary)] flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Mode Selector */}
         <div className="flex items-center gap-1.5 bg-[var(--bg-tertiary)] p-1 rounded-xl border border-[var(--border-glass)]">
-          {[
-            { id: 'tutor', label: 'Chat', icon: MessageSquare },
-            { id: 'ask_resources', label: 'Ask Resources', icon: BookOpen },
-            { id: 'explain', label: 'Explain', icon: HelpCircle },
-            { id: 'summarize', label: 'Summarize', icon: PenTool },
-          ].map((m) => {
+          {AI_MODE_OPTIONS.map((m) => {
             const Icon = m.icon;
             const isActive = mode === m.id;
             return (
               <button
                 key={m.id}
                 disabled={isGenerating}
-                onClick={() => setMode(m.id as any)}
+                onClick={() => setMode(m.id)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[var(--accent-purple)] text-white shadow-sm'

@@ -245,6 +245,7 @@ export interface NextBestAction {
 
 // Combined legacy UserProfile for UI view compatibility
 export interface UserProfile {
+  id?: string;
   name: string;
   email?: string;
   academicLevel: string;

@@ -75,7 +75,7 @@ export interface RequestPreviewMetadata {
   providerId: string;
   providerName: string;
   modelId: string;
-  mode: string;
+  mode: AIConversation['mode'];
   historyMessageCount: number;
   attachedResources: PreparedResourceExcerpt[];
   estimatedInputChars: number;
@@ -85,6 +85,7 @@ export interface RequestPreviewMetadata {
 export interface PrepareAIInput {
   prompt: string;
   mode: AIConversation['mode'];
+  userId: string;
   profileId?: string;
   subjectId?: string | null;
   taskId?: string | null;
@@ -96,6 +97,9 @@ export interface PrepareAIInput {
 export interface PreparedAIRequest {
   type: 'prepared_request';
   requestId: string;
+  userId: string;
+  subjectId?: string | null;
+  taskId?: string | null;
   normalizedRequest: NormalizedAIRequest;
   profileConfig: AIProviderProfile;
   preview: RequestPreviewMetadata;
@@ -105,6 +109,11 @@ export interface PreparedAIRequest {
 export interface LocalOnlyResult {
   type: 'local_only_result';
   requestId: string;
+  userId: string;
+  subjectId?: string | null;
+  taskId?: string | null;
+  prompt: string;
+  mode: AIConversation['mode'];
   excerpts: PreparedResourceExcerpt[];
   message: string;
   isNoEvidenceWarning?: boolean;

@@ -681,7 +681,7 @@ describe('WP-01 persistence inventory invariants', () => {
 
   it('verifies current userId writers and the three entities with no record writer', () => {
     const storeSource = read('src/store/useAppStore.ts');
-    for (const writer of ['addTask', 'addSubject', 'addNote', 'logFocusSession', 'addAIMessage']) {
+    for (const writer of ['addTask', 'addSubject', 'addNote', 'logFocusSession']) {
       const start = storeSource.indexOf(`const ${writer}`);
       expect(start, `${writer} exists`).toBeGreaterThanOrEqual(0);
       expect(storeSource.slice(start, start + 500), `${writer} sets current user scope`)
@@ -690,14 +690,17 @@ describe('WP-01 persistence inventory invariants', () => {
 
     const orchestratorSource = read('src/services/ai/orchestrator.ts');
     const aiWrite = orchestratorSource.slice(
-      orchestratorSource.indexOf('await addAIConversation({'),
-      orchestratorSource.indexOf('}).catch(', orchestratorSource.indexOf('await addAIConversation({')),
+      orchestratorSource.indexOf('await addAIConversation(candidate)'),
+      orchestratorSource.indexOf('return candidate', orchestratorSource.indexOf('await addAIConversation(candidate)')),
     );
-    expect(aiWrite).not.toContain('userId:');
+    expect(aiWrite).toContain('await addAIConversation(candidate)');
+    expect(storeSource).not.toContain('addAIMessage');
+    expect(read('src/views/AIAssistantView.tsx')).not.toContain('onAddAIMessage');
+    expect(orchestratorSource).toContain('userId: prepared.userId');
 
     const plan = read(PLAN_PATH);
     expect(plan).toContain(
-      '| `AIConversation` | Yes | Optional (`userId?`) | `database.ts` migration/seed, `useAppStore.ts` (`addAIMessage`, invoked by `AIAssistantView`) | `orchestrator.ts` runtime writer |',
+      'Single AI Persistence Owner',
     );
     for (const entity of ['Goal', 'Statistic', 'UserAchievement']) {
       expect(plan).toContain(

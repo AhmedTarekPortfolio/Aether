@@ -90,6 +90,7 @@ export function useAetherStore() {
     const s = await db.settings.get('default_settings');
     if (!u) return null;
     return {
+      id: u.id,
       name: u.name,
       email: u.email,
       academicLevel: u.academicLevel,
@@ -196,17 +197,6 @@ export function useAetherStore() {
     }
   };
 
-  // AI Chat Mutations via API layer
-  const addAIMessage = async (msg: Omit<AIConversation, 'id' | 'userId' | 'timestamp'>) => {
-    const newMsg: AIConversation = {
-      ...msg,
-      id: `ai_${Date.now()}`,
-      userId: 'default_user',
-      timestamp: Date.now(),
-    };
-    await api.addAIConversation(newMsg);
-  };
-
   const clearAIChats = async () => {
     await api.clearAIConversations();
   };
@@ -280,7 +270,6 @@ export function useAetherStore() {
     updateNote,
     deleteNote,
     logFocusSession: logFocusSession as (session: Omit<Session, 'id' | 'completedAt'>) => Promise<void>,
-    addAIMessage: addAIMessage as (msg: Omit<AIConversation, 'id' | 'timestamp'>) => Promise<void>,
     clearAIChats,
     markNotificationAsRead,
     markAllNotificationsAsRead,
