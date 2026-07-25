@@ -7,13 +7,21 @@ import { User, Settings as SettingsIcon, Database, Download, Key, ShieldCheck, L
 import { ModelSettingsModal } from '../components/ai/ModelSettingsModal';
 import {
   exportFullBackup,
+  createPreRestoreSafetyBackup,
   getBackupErrorMessage,
   getLegacyImportErrorMessage,
+  getReplaceRestoreErrorMessage,
   importLegacyBackup,
   parseBackupJson,
   prepareLegacyImport,
+  prepareReplaceRestore,
+  replaceRestore,
   type PreparedLegacyImport,
+  type PreparedReplaceRestore,
+  type SafetyBackupReceipt,
 } from '../services/backupService';
+import { desktopBridge } from '../desktop/desktopBridge';
+import { isDesktop } from '../desktop/isDesktop';
 
 interface SettingsViewProps {
   userProfile: UserProfile | null;
@@ -39,6 +47,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     message: string;
   } | null>(null);
   const legacyFileInputRef = useRef<HTMLInputElement>(null);
+  const [preparedRestore, setPreparedRestore] = useState<PreparedReplaceRestore | null>(null);
+  const [safetyReceipt, setSafetyReceipt] = useState<SafetyBackupReceipt | null>(null);
+  const [isPreparingRestore, setIsPreparingRestore] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreStatus, setRestoreStatus] = useState<{
+    kind: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   // Profile Form State
   const [name, setName] = useState(userProfile?.name || 'Alex Rivera');
@@ -133,6 +150,112 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLegacyImportStatus({
       kind: 'info',
       message: 'Legacy import cancelled. No data was changed.',
+    });
+  };
+
+  const resetRestore = () => {
+    setPreparedRestore(null);
+    setSafetyReceipt(null);
+    if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+  };
+
+  const handleRestoreFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    resetRestore();
+    setRestoreStatus(null);
+    if (!file) return;
+    setIsPreparingRestore(true);
+    try {
+      setPreparedRestore(prepareReplaceRestore(parseBackupJson(await file.text())));
+    } catch (error) {
+      setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
+    } finally {
+      setIsPreparingRestore(false);
+      if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+    }
+  };
+
+  const handleCreateRestoreSafetyBackup = async () => {
+    if (!preparedRestore || isRestoring) return;
+    setIsRestoring(true);
+    setRestoreStatus(null);
+    try {
+      const desktop = isDesktop();
+      const receipt = await createPreRestoreSafetyBackup({
+        runtime: desktop ? 'electron' : 'browser',
+        deliver: async (json, filename) => {
+          if (!desktop) {
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            try {
+              anchor.href = url;
+              anchor.download = filename;
+              document.body.appendChild(anchor);
+              anchor.click();
+            } finally {
+              anchor.remove();
+              URL.revokeObjectURL(url);
+            }
+            return true;
+          }
+
+          const saved = await desktopBridge.saveFile({
+            content: json,
+            title: 'Save required pre-restore safety backup',
+            defaultPath: filename,
+          });
+          if (saved.cancelled || !saved.filePath) return false;
+          const readback = await desktopBridge.openFile({
+            title: 'Verify the saved safety backup',
+            buttonLabel: 'Verify Safety Backup',
+          });
+          if (
+            readback.cancelled
+            || readback.filePath !== saved.filePath
+            || typeof readback.content !== 'string'
+          ) return false;
+          prepareReplaceRestore(parseBackupJson(readback.content));
+          return true;
+        },
+      });
+      setSafetyReceipt(receipt);
+      setRestoreStatus({
+        kind: 'info',
+        message: desktop
+          ? 'Safety backup was written and verified. Confirm complete replacement to continue.'
+          : 'Safety backup download was initiated. Confirm that you saved it before complete replacement.',
+      });
+    } catch (error) {
+      setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleConfirmReplaceRestore = async () => {
+    if (!preparedRestore || !safetyReceipt || isRestoring) return;
+    setIsRestoring(true);
+    setRestoreStatus(null);
+    try {
+      await replaceRestore(preparedRestore, { safetyReceipt, confirmed: true });
+      resetRestore();
+      setRestoreStatus({
+        kind: 'success',
+        message: 'Complete Version 2 replacement restore finished and verified.',
+      });
+    } catch (error) {
+      setRestoreStatus({ kind: 'error', message: getReplaceRestoreErrorMessage(error) });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleCancelReplaceRestore = () => {
+    resetRestore();
+    setRestoreStatus({
+      kind: 'info',
+      message: 'Version 2 restore cancelled. No data was changed.',
     });
   };
 
@@ -302,6 +425,94 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }
               >
                 {backupStatus.message}
+              </p>
+            )}
+          </Card>
+
+          <Card className="p-8 space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Upload className="w-5 h-5 text-[var(--accent-rose)]" />
+                Restore Complete Backup (Version 2)
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Restore a versioned 14-table backup. This completely replaces all application data
+                and requires a verified safety backup plus deliberate confirmation.
+              </p>
+            </div>
+
+            <input
+              ref={restoreFileInputRef}
+              aria-label="Select Version 2 complete backup JSON"
+              type="file"
+              accept=".json,application/json"
+              disabled={isPreparingRestore || isRestoring}
+              onChange={handleRestoreFileSelection}
+              className="block w-full text-xs text-[var(--text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--bg-tertiary)] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[var(--text-primary)]"
+            />
+
+            {isPreparingRestore && <p role="status" className="text-xs">Validating all 14 tables…</p>}
+
+            {preparedRestore && (
+              <div
+                aria-label="Version 2 restore confirmation"
+                className="space-y-3 rounded-xl border border-[var(--accent-rose)]/30 bg-[var(--accent-rose)]/10 p-4"
+              >
+                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                  Warning: this replaces all application data
+                </p>
+                {!safetyReceipt ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={isRestoring}
+                    onClick={handleCreateRestoreSafetyBackup}
+                  >
+                    {isRestoring ? 'Creating Safety Backup…' : 'Create Required Safety Backup'}
+                  </Button>
+                ) : (
+                  <label className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
+                    <input type="checkbox" required aria-label="I have saved my safety backup" />
+                    I have saved my safety backup and understand that all application data will be replaced.
+                  </label>
+                )}
+                <div className="flex gap-2">
+                  {safetyReceipt && (
+                    <Button
+                      variant="amber"
+                      size="sm"
+                      disabled={isRestoring}
+                      onClick={(event) => {
+                        const checkbox = event.currentTarget.parentElement?.parentElement
+                          ?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+                        if (checkbox?.checked) void handleConfirmReplaceRestore();
+                      }}
+                    >
+                      {isRestoring ? 'Replacing and Verifying…' : 'Confirm Complete Replacement'}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isRestoring}
+                    onClick={handleCancelReplaceRestore}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {restoreStatus && (
+              <p
+                role={restoreStatus.kind === 'error' ? 'alert' : 'status'}
+                className={restoreStatus.kind === 'error'
+                  ? 'text-xs text-[var(--accent-rose)]'
+                  : restoreStatus.kind === 'success'
+                    ? 'text-xs text-[var(--accent-emerald)]'
+                    : 'text-xs text-[var(--text-secondary)]'}
+              >
+                {restoreStatus.message}
               </p>
             )}
           </Card>

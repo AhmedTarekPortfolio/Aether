@@ -4,25 +4,35 @@ import type { PreparedLegacyImport } from '../backupService';
 
 const {
   exportFullBackupMock,
+  createPreRestoreSafetyBackupMock,
   importLegacyBackupMock,
   parseBackupJsonMock,
   prepareLegacyImportMock,
+  prepareReplaceRestoreMock,
+  replaceRestoreMock,
 } = vi.hoisted(() => ({
   exportFullBackupMock: vi.fn(),
+  createPreRestoreSafetyBackupMock: vi.fn(),
   importLegacyBackupMock: vi.fn(),
   parseBackupJsonMock: vi.fn(),
   prepareLegacyImportMock: vi.fn(),
+  prepareReplaceRestoreMock: vi.fn(),
+  replaceRestoreMock: vi.fn(),
 }));
 
 vi.mock('../backupService', () => ({
   exportFullBackup: exportFullBackupMock,
+  createPreRestoreSafetyBackup: createPreRestoreSafetyBackupMock,
   getBackupErrorMessage: () => 'Complete backup validation failed safely.',
   getLegacyImportErrorMessage: () => (
     'Legacy workspace import could not be completed safely. No credential details were exposed.'
   ),
+  getReplaceRestoreErrorMessage: () => 'Version 2 restore failed safely.',
   importLegacyBackup: importLegacyBackupMock,
   parseBackupJson: parseBackupJsonMock,
   prepareLegacyImport: prepareLegacyImportMock,
+  prepareReplaceRestore: prepareReplaceRestoreMock,
+  replaceRestore: replaceRestoreMock,
 }));
 
 vi.mock('../../components/ai/ModelSettingsModal', () => ({
@@ -187,12 +197,12 @@ describe('WP-05 Settings legacy-import integration', () => {
     await waitFor(() => expect(prepareLegacyImportMock).toHaveBeenCalledTimes(2));
   });
 
-  it('keeps complete backup export separate and introduces no restore control', async () => {
+  it('keeps complete backup export, legacy import, and Version 2 restore separate', async () => {
     await openSystemDataTab();
 
     expect(screen.getByRole('button', { name: /create complete backup.*version 2/i }))
       .toBeInTheDocument();
     expect(screen.getByText(/this is not a complete restore/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /restore/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/restore complete backup.*version 2/i)).toBeInTheDocument();
   });
 });

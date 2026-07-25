@@ -509,6 +509,41 @@ function validateAchievementDefinitions(snapshot: AetherBackupDataV2): void {
   });
 }
 
+function validateUniqueField(
+  records: readonly PlainObject[],
+  fields: readonly string[],
+  context: string,
+): void {
+  const values = new Set<string>();
+  for (const record of records) {
+    const parts = fields.map((field) => record[field]);
+    if (parts.some((part) => part === undefined)) continue;
+    const key = parts.map((part) => `${typeof part}:${String(part)}`).join('\u0000');
+    if (values.has(key)) fail(`${context} contains a conflicting unique index value.`);
+    values.add(key);
+  }
+}
+
+export function validateBackupUniqueIndexes(snapshot: AetherBackupDataV2): void {
+  validateUniqueField(snapshot.users as unknown as PlainObject[], ['email'], 'users');
+  validateUniqueField(snapshot.settings as unknown as PlainObject[], ['userId'], 'settings');
+  validateUniqueField(
+    snapshot.achievement_definitions as unknown as PlainObject[],
+    ['key'],
+    'achievement_definitions',
+  );
+  validateUniqueField(
+    snapshot.statistics as unknown as PlainObject[],
+    ['userId', 'metricKey', 'periodStart'],
+    'statistics',
+  );
+  validateUniqueField(
+    snapshot.user_achievements as unknown as PlainObject[],
+    ['userId', 'achievementId'],
+    'user_achievements',
+  );
+}
+
 export function validateBackupSnapshot(value: unknown): asserts value is AetherBackupDataV2 {
   if (!isPlainObject(value)) fail('Backup data must be an object.');
   assertExactKeys(value, PERSISTENCE_TABLES, 'Backup data');
@@ -529,6 +564,7 @@ export function validateBackupSnapshot(value: unknown): asserts value is AetherB
   const snapshot = value as unknown as AetherBackupDataV2;
   validateTimestamps(snapshot);
   validateAchievementDefinitions(snapshot);
+  validateBackupUniqueIndexes(snapshot);
   validateRelationships(snapshot);
 }
 
@@ -1134,4 +1170,219 @@ export function getLegacyImportErrorMessage(error: unknown): string {
     return error.message;
   }
   return 'Legacy workspace import could not be completed safely. No credential details were exposed.';
+}
+
+export const REPLACE_RESTORE_CLEAR_ORDER = [
+  'user_achievements',
+  'notifications',
+  'sessions',
+  'flashcards',
+  'notes',
+  'tasks',
+  'topics',
+  'goals',
+  'statistics',
+  'ai_conversations',
+  'subjects',
+  'settings',
+  'users',
+  'achievement_definitions',
+] as const satisfies readonly PersistenceTableName[];
+
+export const REPLACE_RESTORE_INSERT_ORDER = [
+  'achievement_definitions',
+  'users',
+  'settings',
+  'subjects',
+  'goals',
+  'topics',
+  'tasks',
+  'ai_conversations',
+  'statistics',
+  'notes',
+  'flashcards',
+  'sessions',
+  'notifications',
+  'user_achievements',
+] as const satisfies readonly PersistenceTableName[];
+
+export interface PreparedReplaceRestore {
+  format: 'version-2';
+  backup: AetherBackupV2;
+  incomingCounts: AetherBackupRecordCounts;
+  expectedPostRestoreCounts: AetherBackupRecordCounts;
+}
+
+export interface SafetyBackupReceipt {
+  readonly kind: 'verified-safety-backup';
+  readonly runtime: 'browser' | 'electron';
+  readonly completedAt: string;
+  readonly token: symbol;
+}
+
+const SAFETY_BACKUP_RECEIPT_TOKEN = Symbol('verified-safety-backup');
+
+export interface SafetyBackupDelivery {
+  runtime: 'browser' | 'electron';
+  deliver(json: string, filename: string): Promise<boolean>;
+}
+
+export interface ReplaceRestoreHooks {
+  beforeClear?: (table: PersistenceTableName) => void | Promise<void>;
+  afterClear?: (table: PersistenceTableName) => void | Promise<void>;
+  beforeInsert?: (table: PersistenceTableName) => void | Promise<void>;
+  afterInsert?: (table: PersistenceTableName) => void | Promise<void>;
+  beforeRelationshipVerification?: () => void | Promise<void>;
+  beforeCountVerification?: () => void | Promise<void>;
+}
+
+export interface ReplaceRestoreOptions {
+  database?: AetherDatabase;
+  safetyReceipt: SafetyBackupReceipt;
+  confirmed: boolean;
+  refresh?: () => void | Promise<void>;
+  hooks?: ReplaceRestoreHooks;
+}
+
+export interface ReplaceRestoreResult {
+  counts: AetherBackupRecordCounts;
+}
+
+function cloneBackup(backup: AetherBackupV2): AetherBackupV2 {
+  return JSON.parse(JSON.stringify(backup)) as AetherBackupV2;
+}
+
+export function prepareReplaceRestore(value: unknown): PreparedReplaceRestore {
+  if (classifyBackupFormat(value) !== 'version-2') {
+    fail('Only a complete Version 2 backup can be used for replacement restore.');
+  }
+  validateBackupV2(value);
+  const backup = cloneBackup(value);
+  validateBackupV2(backup);
+  return {
+    format: 'version-2',
+    backup,
+    incomingCounts: { ...backup.recordCounts },
+    expectedPostRestoreCounts: {
+      ...backup.recordCounts,
+      achievement_definitions: CANONICAL_ACHIEVEMENT_DEFINITIONS.length,
+    },
+  };
+}
+
+export async function createPreRestoreSafetyBackup(
+  delivery: SafetyBackupDelivery,
+  database: AetherDatabase = db,
+): Promise<SafetyBackupReceipt> {
+  let delivered = false;
+  const result = await exportFullBackup({
+    database,
+    download: async (json, filename) => {
+      delivered = await delivery.deliver(json, filename.replace(
+        'Aether_Backup_V2_',
+        'Aether_PreRestore_SafetyBackup_',
+      ));
+    },
+  });
+  validateBackupV2(parseBackupJson(result.json));
+  if (!delivered) {
+    fail('The safety backup was not completed and verified. No data was changed.');
+  }
+  return {
+    kind: 'verified-safety-backup',
+    runtime: delivery.runtime,
+    completedAt: new Date().toISOString(),
+    token: SAFETY_BACKUP_RECEIPT_TOKEN,
+  };
+}
+
+async function readAllTablesInTransaction(
+  database: AetherDatabase,
+): Promise<AetherBackupDataV2> {
+  const entries = await Promise.all(PERSISTENCE_TABLES.map(async (table) => [
+    table,
+    await database.table(table).toArray(),
+  ] as const));
+  return Object.fromEntries(entries) as AetherBackupDataV2;
+}
+
+function equalCounts(
+  left: AetherBackupRecordCounts,
+  right: AetherBackupRecordCounts,
+): boolean {
+  return PERSISTENCE_TABLES.every((table) => left[table] === right[table]);
+}
+
+export async function replaceRestore(
+  prepared: PreparedReplaceRestore,
+  options: ReplaceRestoreOptions,
+): Promise<ReplaceRestoreResult> {
+  if (
+    !options.confirmed
+    || options.safetyReceipt?.kind !== 'verified-safety-backup'
+    || options.safetyReceipt.token !== SAFETY_BACKUP_RECEIPT_TOKEN
+  ) {
+    fail('Replacement restore requires a completed safety backup and deliberate confirmation.');
+  }
+
+  const database = options.database ?? db;
+  const transactionTables: Table[] = PERSISTENCE_TABLES.map(
+    (table) => database.table(table),
+  );
+  const hooks = options.hooks;
+
+  try {
+    await database.transaction('rw', transactionTables, async () => {
+      // Revalidate the complete, possibly stale in-memory payload inside the
+      // transaction and before the first destructive write.
+      validateBackupV2(prepared.backup);
+
+      for (const table of REPLACE_RESTORE_CLEAR_ORDER) {
+        await hooks?.beforeClear?.(table);
+        await database.table(table).clear();
+        await hooks?.afterClear?.(table);
+      }
+
+      for (const table of REPLACE_RESTORE_INSERT_ORDER) {
+        await hooks?.beforeInsert?.(table);
+        const records = table === 'achievement_definitions'
+          ? CANONICAL_ACHIEVEMENT_DEFINITIONS
+          : prepared.backup.data[table];
+        if (records.length > 0) {
+          await database.table(table).bulkAdd(records);
+        }
+        await hooks?.afterInsert?.(table);
+      }
+
+      const postRestore = await readAllTablesInTransaction(database);
+      await hooks?.beforeRelationshipVerification?.();
+      validateBackupSnapshot(postRestore);
+
+      await hooks?.beforeCountVerification?.();
+      const actualCounts = calculateBackupRecordCounts(postRestore);
+      if (!equalCounts(actualCounts, prepared.expectedPostRestoreCounts)) {
+        throw new Error('Restore count verification failed.');
+      }
+    });
+  } catch (error) {
+    if (error instanceof BackupValidationError) throw error;
+    fail('Replacement restore failed and was rolled back. No data was changed.');
+  }
+
+  try {
+    await options.refresh?.();
+  } catch {
+    throw new LegacyImportCommittedError(
+      'Replacement restore committed and verified, but the application refresh failed.',
+    );
+  }
+
+  return { counts: { ...prepared.expectedPostRestoreCounts } };
+}
+
+export function getReplaceRestoreErrorMessage(error: unknown): string {
+  if (error instanceof BackupValidationError || error instanceof LegacyImportCommittedError) {
+    return error.message;
+  }
+  return 'Version 2 restore could not be completed safely. No sensitive details were exposed.';
 }
