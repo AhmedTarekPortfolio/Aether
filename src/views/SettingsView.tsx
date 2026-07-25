@@ -192,8 +192,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (isPreparingRestore || isRestoring) return;
     resetRestore();
     setRestoreStatus(null);
+    setActiveTab('system');
     if (!isDesktop()) {
-      recoveryFileInputRef.current?.click();
+      window.setTimeout(() => recoveryFileInputRef.current?.click(), 0);
       return;
     }
     setIsPreparingRestore(true);

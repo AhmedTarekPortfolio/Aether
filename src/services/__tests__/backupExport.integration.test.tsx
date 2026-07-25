@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   exportFullBackupMock,
@@ -51,6 +51,7 @@ import { SettingsView } from '../../views/SettingsView';
 
 describe('WP-04 Settings complete-backup integration', () => {
   beforeEach(() => {
+    localStorage.removeItem('aether.restoreVerification.v1');
     exportFullBackupMock.mockReset();
     prepareReplaceRestoreMock.mockReset();
     createPreRestoreSafetyBackupMock.mockReset();
@@ -58,6 +59,11 @@ describe('WP-04 Settings complete-backup integration', () => {
     desktopRuntime.enabled = false;
     desktopSaveFileMock.mockReset();
     desktopOpenFileMock.mockReset();
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('aether.restoreVerification.v1');
+    vi.restoreAllMocks();
   });
 
   async function openSystemDataTab(): Promise<void> {
@@ -87,6 +93,29 @@ describe('WP-04 Settings complete-backup integration', () => {
       'Complete Version 2 backup download started.',
     ));
     expect(exportFullBackupMock).toHaveBeenCalledOnce();
+  });
+
+  it('opens the system recovery file input when deliberate recovery is requested from another tab', async () => {
+    localStorage.setItem('aether.restoreVerification.v1', '{"state":"interrupted"}');
+    render(
+      <SettingsView
+        userProfile={null}
+        onUpdateProfile={vi.fn().mockResolvedValue(undefined)}
+        refreshFromIndexedDb={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+
+    act(() => {
+      window.dispatchEvent(new Event('aether-request-safety-backup-recovery'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/recovery mode is active/i)).toBeInTheDocument();
+      expect(clickSpy).toHaveBeenCalledOnce();
+    });
+    expect(screen.getByLabelText(/select safety backup for deliberate recovery/i))
+      .toBeInTheDocument();
   });
 
   it('shows a safe historical-AI warning after a successful export', async () => {
