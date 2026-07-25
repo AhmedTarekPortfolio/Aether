@@ -475,8 +475,6 @@ export const HISTORICAL_AI_SUBJECT_REFERENCE_COMPATIBILITY = {
 } as const;
 
 export interface RestoreVerificationMarkerV1 {
-  key: 'aether.restoreVerification.v1';
-  version: 1;
   state: 'transaction-started' | 'verification-failed';
   runtime: 'browser' | 'electron';
   expectedPostRestoreCounts: AetherBackupRecordCounts;

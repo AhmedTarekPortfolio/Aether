@@ -236,6 +236,8 @@ describe('WP-08 marker validation and interlock', () => {
     ['invalid digest', null],
     ['invalid runtime', null],
     ['invalid timestamp', null],
+    ['redundant storage key field', null],
+    ['redundant version field', null],
     ['secret-looking extra field', null],
   ])('rejects %s marker data', async (label, supplied) => {
     const marker = await markerFor(createBackupSnapshotFixture(`invalid-${label.replace(/\s/g, '-')}`));
@@ -248,6 +250,10 @@ describe('WP-08 marker validation and interlock', () => {
       const value = JSON.parse(raw); value.runtime = 'server'; raw = JSON.stringify(value);
     } else if (label === 'invalid timestamp') {
       const value = JSON.parse(raw); value.startedAt = 'yesterday'; raw = JSON.stringify(value);
+    } else if (label === 'redundant storage key field') {
+      const value = JSON.parse(raw); value.key = RESTORE_VERIFICATION_STORAGE_KEY; raw = JSON.stringify(value);
+    } else if (label === 'redundant version field') {
+      const value = JSON.parse(raw); value.version = 1; raw = JSON.stringify(value);
     } else if (label === 'secret-looking extra field') {
       const value = JSON.parse(raw); value.apiKey = 'not-stored'; raw = JSON.stringify(value);
     }

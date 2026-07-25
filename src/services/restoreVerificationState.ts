@@ -86,8 +86,6 @@ export function parseRestoreVerificationMarker(
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const marker = value as Record<string, unknown>;
   const expectedKeys = [
-    'key',
-    'version',
     'state',
     'runtime',
     'expectedPostRestoreCounts',
@@ -101,9 +99,7 @@ export function parseRestoreVerificationMarker(
     || keys.some((key) => !expectedKeys.includes(key))
   ) return null;
   if (
-    marker.key !== RESTORE_VERIFICATION_STORAGE_KEY
-    || marker.version !== 1
-    || (marker.state !== 'transaction-started' && marker.state !== 'verification-failed')
+    (marker.state !== 'transaction-started' && marker.state !== 'verification-failed')
     || (marker.runtime !== 'browser' && marker.runtime !== 'electron')
     || !isCounts(marker.expectedPostRestoreCounts)
     || !isDigest(marker.incomingBackupDigest)
@@ -136,8 +132,6 @@ export function buildRestoreVerificationMarker(input: {
   startedAt?: string;
 }): RestoreVerificationMarkerV1 {
   const marker: RestoreVerificationMarkerV1 = {
-    key: RESTORE_VERIFICATION_STORAGE_KEY,
-    version: 1,
     state: input.state ?? 'transaction-started',
     runtime: input.runtime,
     expectedPostRestoreCounts: { ...input.expectedPostRestoreCounts },

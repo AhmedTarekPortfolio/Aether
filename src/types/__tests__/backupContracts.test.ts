@@ -304,8 +304,6 @@ describe('WP-02 achievement and AI persistence contracts', () => {
 
 describe('WP-02 recovery and runtime safety contracts', () => {
   const markerFixture = {
-    key: 'aether.restoreVerification.v1',
-    version: 1,
     state: 'transaction-started',
     runtime: 'browser',
     expectedPostRestoreCounts: emptyCounts,
@@ -317,8 +315,8 @@ describe('WP-02 recovery and runtime safety contracts', () => {
   it('requires counts plus content digest in the durable marker', () => {
     expect(markerFixture.expectedStateDigest).not.toBe(markerFixture.incomingBackupDigest);
     expect(RESTORE_VERIFICATION_MARKER_CONTRACT).toMatchObject({
-      key: markerFixture.key,
-      version: markerFixture.version,
+      key: 'aether.restoreVerification.v1',
+      version: 1,
       digestAlgorithm: 'SHA-256',
       writeAndReadBackBeforeTransaction: true,
       sameCountDifferentContentPolicy: 'verification-failed',
