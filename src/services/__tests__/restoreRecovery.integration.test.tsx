@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '../../App';
 import { db, CANONICAL_ACHIEVEMENT_DEFINITIONS } from '../../db/database';
@@ -69,6 +69,7 @@ async function pendingMarker(data: AetherBackupDataV2) {
 
 afterEach(async () => {
   cleanup();
+  vi.restoreAllMocks();
   localStorage.clear();
   db.close();
   await db.delete();
@@ -118,4 +119,21 @@ describe('WP-08 production startup and store hydration', () => {
     expect(localStorage.getItem(RESTORE_VERIFICATION_STORAGE_KEY))
       .toBe('{"state":"unsupported"}');
   });
+
+  it('opens deliberate recovery only after Settings mounts from another application view', async () => {
+    const data = applicationSnapshot();
+    await seed(data);
+    localStorage.setItem(RESTORE_VERIFICATION_STORAGE_KEY, '{"state":"unsupported"}');
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+
+    render(<StrictMode><MemoryRouter><App /></MemoryRouter></StrictMode>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore from Safety Backup' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/recovery mode is active/i)).toBeInTheDocument();
+      expect(clickSpy).toHaveBeenCalledOnce();
+    });
+    expect(screen.getByLabelText(/select safety backup for deliberate recovery/i))
+      .toBeInTheDocument();
+  }, 15_000);
 });

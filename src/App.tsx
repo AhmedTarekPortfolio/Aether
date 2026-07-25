@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAetherStore } from './store/useAppStore';
 import { useTheme } from './hooks/useTheme';
 import { Sidebar } from './components/layout/Sidebar';
@@ -6,7 +6,10 @@ import { TopHeader } from './components/layout/TopHeader';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { ExplainabilityModal } from './components/common/ExplainabilityModal';
 import { ToastProvider } from './components/ui/Toast';
-import { RestoreRecoveryWarning } from './components/common/RestoreRecoveryWarning';
+import {
+  REQUEST_SAFETY_BACKUP_RECOVERY_EVENT,
+  RestoreRecoveryWarning,
+} from './components/common/RestoreRecoveryWarning';
 
 import { HomeView } from './views/HomeView';
 import { PlanView } from './views/PlanView';
@@ -19,6 +22,13 @@ import { SettingsView } from './views/SettingsView';
 export function AppContent() {
   const store = useAetherStore();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [recoveryRequestPending, setRecoveryRequestPending] = useState(false);
+
+  useEffect(() => {
+    if (store.activeTab !== 'settings' || !recoveryRequestPending) return;
+    window.dispatchEvent(new Event(REQUEST_SAFETY_BACKUP_RECOVERY_EVENT));
+    setRecoveryRequestPending(false);
+  }, [recoveryRequestPending, store.activeTab]);
 
   // Synchronize HTML class with active theme using extracted useTheme hook
   const { toggleTheme } = useTheme(store.userProfile || null, store.updateProfile);
@@ -55,7 +65,10 @@ export function AppContent() {
       {/* Main Content Viewport */}
       <div className="flex-1 flex flex-col min-w-0">
         <RestoreRecoveryWarning
-          onOpenRecovery={() => store.setActiveTab('settings')}
+          onOpenRecovery={() => {
+            store.setActiveTab('settings');
+            setRecoveryRequestPending(true);
+          }}
           refreshFromIndexedDb={store.refreshFromIndexedDb}
         />
         <TopHeader

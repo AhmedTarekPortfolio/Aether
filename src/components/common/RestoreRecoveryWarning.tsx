@@ -54,9 +54,6 @@ export function RestoreRecoveryWarning({
 
   const openRecovery = () => {
     onOpenRecovery();
-    window.setTimeout(() => {
-      window.dispatchEvent(new Event(REQUEST_SAFETY_BACKUP_RECOVERY_EVENT));
-    }, 0);
   };
 
   return (
