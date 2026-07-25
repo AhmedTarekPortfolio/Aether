@@ -73,6 +73,13 @@ export class UpgradeFixtureDatabaseV2 extends Dexie {
 
 const trackedConnections = new Map<string, Set<Dexie>>();
 let uniqueDatabaseSequence = 0;
+const productionDatabaseName = 'AetherPhase1DB';
+
+export function assertTestDatabaseName(name: string): void {
+  if (name === productionDatabaseName || !name.startsWith('AetherTest-')) {
+    throw new Error(`Unsafe test database name: ${name}`);
+  }
+}
 
 function trackConnection(database: Dexie): void {
   const connections = trackedConnections.get(database.name) ?? new Set<Dexie>();
@@ -96,6 +103,7 @@ export function createUniqueDatabaseName(scope = 'wp03'): string {
 }
 
 export async function openTestDatabase<T extends Dexie>(database: T): Promise<T> {
+  assertTestDatabaseName(database.name);
   await database.open();
   trackConnection(database);
   return database;
@@ -133,6 +141,7 @@ export async function deleteTestDatabase(
   const name = typeof databaseOrName === 'string'
     ? databaseOrName
     : databaseOrName.name;
+  assertTestDatabaseName(name);
   const connections = new Set(trackedConnections.get(name));
 
   if (typeof databaseOrName !== 'string') {

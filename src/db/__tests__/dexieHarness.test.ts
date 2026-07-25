@@ -4,6 +4,7 @@ import { AetherDatabase } from '../database';
 import {
   UpgradeFixtureDatabaseV1,
   UpgradeFixtureDatabaseV2,
+  assertTestDatabaseName,
   createTestDatabase,
   createUniqueDatabaseName,
   deleteTestDatabase,
@@ -161,17 +162,32 @@ describe('real IndexedDB and Dexie test harness', () => {
     expect(second).toEqual(first);
   });
 
-  it('opens the existing Aether production schema at version 3 and cleans it up', async () => {
-    const name = 'AetherPhase1DB';
-    databasesToClean.add(name);
-    await deleteTestDatabase(name);
-    const database = new AetherDatabase();
+  it('opens the production version 3 schema under a unique test-only name', async () => {
+    const productionDatabase = new AetherDatabase();
+    const productionStores = Object.fromEntries(productionDatabase.tables.map((table) => [
+      table.name,
+      [table.schema.primKey.src, ...table.schema.indexes.map((index) => index.src)].join(', '),
+    ]));
+
+    expect(productionDatabase.isOpen()).toBe(false);
+    expect(productionDatabase.verno).toBe(3);
+    expect(productionDatabase.tables).toHaveLength(14);
+
+    const name = uniqueName('production-schema-v3');
+    const database = new Dexie(name);
+    database.version(productionDatabase.verno).stores(productionStores);
 
     await openTestDatabase(database);
 
     expect(database.verno).toBe(3);
-    expect(database.tables).toHaveLength(14);
-    await deleteTestDatabase(database);
-    expect(getOpenTestDatabaseConnectionCount(name)).toBe(0);
+    expect(database.tables.map((table) => table.name).sort()).toEqual(
+      productionDatabase.tables.map((table) => table.name).sort(),
+    );
+  });
+
+  it('rejects the production database name before a test can open or delete it', () => {
+    expect(() => assertTestDatabaseName('AetherPhase1DB')).toThrow(
+      'Unsafe test database name: AetherPhase1DB',
+    );
   });
 });
