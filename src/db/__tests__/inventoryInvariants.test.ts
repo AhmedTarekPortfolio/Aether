@@ -462,8 +462,8 @@ const EXPECTED_DIRECT_DB_FILES = [
   'src/api/topicApi.ts',
   'src/api/userApi.ts',
   'src/db/database.ts',
+  'src/services/backupService.ts',
   'src/store/useAppStore.ts',
-  'src/views/SettingsView.tsx',
 ] as const;
 
 const PLAN_PATH = 'docs/PHASE_1_IMPLEMENTATION_PLAN.md';
@@ -581,7 +581,9 @@ describe('WP-01 persistence inventory invariants', () => {
     const databaseSource = read('src/db/database.ts');
     expect(databaseSource).toContain('export async function seedInitialDataIfEmpty()');
     expect(databaseSource).toContain('await db.users.put(');
-    expect(databaseSource).toContain('await db.achievement_definitions.bulkAdd(achDefs)');
+    expect(databaseSource).toContain(
+      'await db.achievement_definitions.bulkAdd(CANONICAL_ACHIEVEMENT_DEFINITIONS)',
+    );
     for (const tableName of ['goals', 'statistics', 'user_achievements'] as const) {
       expect(databaseSource).not.toMatch(new RegExp(`db\\.${tableName}\\.(add|put|bulkAdd|bulkPut)\\(`));
     }
@@ -629,12 +631,19 @@ describe('WP-01 persistence inventory invariants', () => {
   it('locks direct database access to the reviewed database, API, store, and export files', () => {
     const tablePattern = TABLES.join('|');
     const directFiles = walkProductionFiles('src')
-      .filter((file) => new RegExp(`\\bdb\\.(${tablePattern})\\b`).test(read(file)))
+      .filter((file) => {
+        const source = read(file);
+        return new RegExp(`\\bdb\\.(${tablePattern})\\b`).test(source)
+          || (
+            file === 'src/services/backupService.ts'
+            && new RegExp(`\\bdatabase\\.(${tablePattern})\\b`).test(source)
+          );
+      })
       .sort();
     expect(directFiles).toEqual([...EXPECTED_DIRECT_DB_FILES].sort());
   });
 
-  it('distinguishes reactive store reads from writes and legacy export reads', () => {
+  it('distinguishes reactive store reads from writes and complete backup reads', () => {
     const storeSource = read('src/store/useAppStore.ts');
     const directStoreTables = [...storeSource.matchAll(/\bdb\.([a-z_]+)\b/g)]
       .map((match) => match[1])
@@ -645,15 +654,17 @@ describe('WP-01 persistence inventory invariants', () => {
       expect(storeSource).toMatch(new RegExp(`useLiveQuery\\([\\s\\S]{0,180}db\\.${tableName}\\b`));
     }
 
-    const settingsSource = read('src/views/SettingsView.tsx');
-    const exportBody = settingsSource.slice(
-      settingsSource.indexOf('const handleExportData'),
-      settingsSource.indexOf('const blob', settingsSource.indexOf('const handleExportData')),
-    );
-    const exportedTables = [...exportBody.matchAll(/\bdb\.([a-z_]+)\.toArray\(\)/g)]
+    const backupSource = read('src/services/backupService.ts');
+    const exportedTables = [...backupSource.matchAll(/\bdatabase\.([a-z_]+)\.toArray\(\)/g)]
       .map((match) => match[1]);
-    expect(exportedTables).toEqual(LEGACY_EXPORT_TABLES);
-    expect(exportBody).not.toMatch(/\.(add|put|bulkAdd|bulkPut|update|delete|clear)\(/);
+    expect(exportedTables).toEqual(TABLES);
+    expect(backupSource).not.toMatch(
+      new RegExp(`\\bdatabase\\.(${TABLES.join('|')})\\.(add|put|bulkAdd|bulkPut|update|delete|clear)\\(`),
+    );
+
+    const settingsSource = read('src/views/SettingsView.tsx');
+    expect(settingsSource).toContain('exportFullBackup()');
+    expect(settingsSource).not.toMatch(/\bdb\.[a-z_]+\.toArray\(\)/);
   });
 
   it('verifies current userId writers and the three entities with no record writer', () => {

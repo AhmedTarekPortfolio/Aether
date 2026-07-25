@@ -31,6 +31,13 @@ import {
   NotificationItem 
 } from '../types';
 
+export const CANONICAL_ACHIEVEMENT_DEFINITIONS: AchievementDefinition[] = [
+  { id: 'ach_first_task', key: 'first_task_completed', title: 'First Steps', description: 'Complete your first study task', category: 'tasks', targetValue: 1, icon: 'CheckCircle2' },
+  { id: 'ach_focus_5', key: 'five_focus_sessions', title: 'Deep Work Pioneer', description: 'Log 5 completed focus sessions', category: 'focus', targetValue: 5, icon: 'Timer' },
+  { id: 'ach_mastery_100', key: 'topic_mastery_100', title: 'Subject Master', description: 'Reach 100% mastery on a topic', category: 'mastery', targetValue: 100, icon: 'Award' },
+  { id: 'ach_notes_3', key: 'create_three_notes', title: 'Scholar Note-taker', description: 'Create 3 rich study notes', category: 'notes', targetValue: 3, icon: 'FileText' },
+];
+
 export class AetherDatabase extends Dexie {
   users!: Table<User>;
   settings!: Table<Settings>;
@@ -188,13 +195,7 @@ export class AetherDatabase extends Dexie {
       }
 
       // 5. Seed Achievement Definitions
-      const starterAchievements: AchievementDefinition[] = [
-        { id: 'ach_first_task', key: 'first_task_completed', title: 'First Steps', description: 'Complete your first study task', category: 'tasks', targetValue: 1, icon: 'CheckCircle2' },
-        { id: 'ach_focus_5', key: 'five_focus_sessions', title: 'Deep Work Pioneer', description: 'Log 5 completed focus sessions', category: 'focus', targetValue: 5, icon: 'Timer' },
-        { id: 'ach_mastery_100', key: 'topic_mastery_100', title: 'Subject Master', description: 'Reach 100% mastery on a topic', category: 'mastery', targetValue: 100, icon: 'Award' },
-        { id: 'ach_notes_3', key: 'create_three_notes', title: 'Scholar Note-taker', description: 'Create 3 rich study notes', category: 'notes', targetValue: 3, icon: 'FileText' },
-      ];
-      for (const ach of starterAchievements) {
+      for (const ach of CANONICAL_ACHIEVEMENT_DEFINITIONS) {
         await tx.table('achievement_definitions').add(ach);
       }
     });
@@ -458,14 +459,8 @@ Where:
   await db.notifications.bulkAdd(notifications);
 
   // 8. Initial Achievement Definitions
-  const achDefs: AchievementDefinition[] = [
-    { id: 'ach_first_task', key: 'first_task_completed', title: 'First Steps', description: 'Complete your first study task', category: 'tasks', targetValue: 1, icon: 'CheckCircle2' },
-    { id: 'ach_focus_5', key: 'five_focus_sessions', title: 'Deep Work Pioneer', description: 'Log 5 completed focus sessions', category: 'focus', targetValue: 5, icon: 'Timer' },
-    { id: 'ach_mastery_100', key: 'topic_mastery_100', title: 'Subject Master', description: 'Reach 100% mastery on a topic', category: 'mastery', targetValue: 100, icon: 'Award' },
-    { id: 'ach_notes_3', key: 'create_three_notes', title: 'Scholar Note-taker', description: 'Create 3 rich study notes', category: 'notes', targetValue: 3, icon: 'FileText' },
-  ];
   const existingAch = await db.achievement_definitions.count();
   if (existingAch === 0) {
-    await db.achievement_definitions.bulkAdd(achDefs);
+    await db.achievement_definitions.bulkAdd(CANONICAL_ACHIEVEMENT_DEFINITIONS);
   }
 }

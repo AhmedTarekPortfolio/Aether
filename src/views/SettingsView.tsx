@@ -3,9 +3,9 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { UserProfile } from '../types';
-import { db } from '../db/database';
 import { User, Settings as SettingsIcon, Database, Download, Key, ShieldCheck, Lock } from 'lucide-react';
 import { ModelSettingsModal } from '../components/ai/ModelSettingsModal';
+import { exportFullBackup, getBackupErrorMessage } from '../services/backupService';
 
 interface SettingsViewProps {
   userProfile: UserProfile | null;
@@ -18,6 +18,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'system'>('profile');
   const [isModelSettingsOpen, setIsModelSettingsOpen] = useState(false);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<{
+    kind: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Profile Form State
   const [name, setName] = useState(userProfile?.name || 'Alex Rivera');
@@ -40,24 +45,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleExportData = async () => {
-    const exportData = {
-      users: await db.users.toArray(),
-      settings: await db.settings.toArray(),
-      subjects: await db.subjects.toArray(),
-      topics: await db.topics.toArray(),
-      tasks: await db.tasks.toArray(),
-      notes: await db.notes.toArray(),
-      flashcards: await db.flashcards.toArray(),
-      sessions: await db.sessions.toArray(),
-      exportedAt: new Date().toISOString(),
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Aether_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
+    setIsExportingBackup(true);
+    setBackupStatus(null);
+    try {
+      const result = await exportFullBackup();
+      setBackupStatus({
+        kind: 'success',
+        message: [
+          'Complete Version 2 backup download started.',
+          ...result.warnings,
+        ].join(' '),
+      });
+    } catch (error) {
+      setBackupStatus({
+        kind: 'error',
+        message: getBackupErrorMessage(error),
+      });
+    } finally {
+      setIsExportingBackup(false);
+    }
   };
 
   return (
@@ -211,9 +217,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               size="md"
               icon={<Download className="w-4 h-4" />}
               onClick={handleExportData}
+              disabled={isExportingBackup}
             >
-              Export JSON Backup
+              {isExportingBackup ? 'Validating Complete Backup…' : 'Export Complete Version 2 Backup'}
             </Button>
+
+            {backupStatus && (
+              <p
+                role={backupStatus.kind === 'error' ? 'alert' : 'status'}
+                className={
+                  backupStatus.kind === 'error'
+                    ? 'text-xs font-medium text-[var(--accent-rose)]'
+                    : 'text-xs font-medium text-[var(--accent-emerald)]'
+                }
+              >
+                {backupStatus.message}
+              </p>
+            )}
           </Card>
         </div>
       )}

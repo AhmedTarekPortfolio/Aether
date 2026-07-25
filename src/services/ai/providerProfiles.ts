@@ -99,6 +99,16 @@ export function getProviderProfiles(): AIProviderProfile[] {
 }
 
 /**
+ * Returns only the non-secret identifiers needed to recognize historical
+ * AIConversation records that accidentally stored a provider ID as subjectId.
+ */
+export function getKnownProviderProfileIds(
+  profiles: readonly Pick<AIProviderProfile, 'id'>[],
+): string[] {
+  return profiles.map((profile) => profile.id);
+}
+
+/**
  * Saves provider profiles list to localStorage without secret credentials.
  */
 export function saveProviderProfiles(profiles: AIProviderProfile[]): void {
