@@ -95,6 +95,149 @@ describe('WP-04 Settings complete-backup integration', () => {
     expect(exportFullBackupMock).toHaveBeenCalledOnce();
   });
 
+  it('writes and validates an Electron Version 2 export through exact-path readback', async () => {
+    const json = '{"format":"aether-complete-backup"}';
+    desktopRuntime.enabled = true;
+    desktopSaveFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'C:\\Backups\\aether.json',
+    });
+    desktopOpenFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'C:\\Backups\\aether.json',
+      content: json,
+    });
+    exportFullBackupMock.mockImplementation(async (options) => {
+      await options.download(json, 'aether.json');
+      return { warnings: [] };
+    });
+    await openSystemDataTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
+      'Complete Version 2 backup was written and verified.',
+    ));
+    expect(desktopSaveFileMock).toHaveBeenCalledWith(expect.objectContaining({
+      content: json,
+      defaultPath: 'aether.json',
+      title: 'Save complete Version 2 backup',
+    }));
+    expect(desktopOpenFileMock).toHaveBeenCalledWith({
+      title: 'Verify the saved complete backup',
+      buttonLabel: 'Verify Complete Backup',
+    });
+    expect(prepareReplaceRestoreMock).toHaveBeenCalledWith(JSON.parse(json));
+  });
+
+  it.each([
+    {
+      name: 'save cancellation',
+      saveResult: { cancelled: true },
+      openResult: undefined,
+      expectedMessage: 'Complete Version 2 backup save was cancelled. No data was changed.',
+    },
+    {
+      name: 'readback cancellation',
+      saveResult: { cancelled: false, filePath: 'C:\\Backups\\aether.json' },
+      openResult: { cancelled: true },
+      expectedMessage: 'The complete Version 2 backup was written, but readback verification failed.',
+    },
+    {
+      name: 'different selected readback path',
+      saveResult: { cancelled: false, filePath: 'C:\\Backups\\aether.json' },
+      openResult: {
+        cancelled: false,
+        filePath: 'C:\\Backups\\other.json',
+        content: '{"format":"aether-complete-backup"}',
+      },
+      expectedMessage: 'The complete Version 2 backup was written, but readback verification failed.',
+    },
+    {
+      name: 'modified readback content',
+      saveResult: { cancelled: false, filePath: 'C:\\Backups\\aether.json' },
+      openResult: {
+        cancelled: false,
+        filePath: 'C:\\Backups\\aether.json',
+        content: '{"format":"modified"}',
+      },
+      expectedMessage: 'The complete Version 2 backup was written, but readback verification failed.',
+    },
+  ])('blocks Electron export success after $name', async ({
+    saveResult,
+    openResult,
+    expectedMessage,
+  }) => {
+    const json = '{"format":"aether-complete-backup"}';
+    desktopRuntime.enabled = true;
+    desktopSaveFileMock.mockResolvedValue(saveResult);
+    if (openResult) desktopOpenFileMock.mockResolvedValue(openResult);
+    exportFullBackupMock.mockImplementation(async (options) => {
+      await options.download(json, 'aether.json');
+      return { warnings: [] };
+    });
+    await openSystemDataTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(expectedMessage));
+    expect(screen.queryByText(/backup was written and verified/i)).not.toBeInTheDocument();
+    expect(prepareReplaceRestoreMock).not.toHaveBeenCalled();
+  });
+
+  it('reports an accurate post-write failure when Electron readback rejects', async () => {
+    const json = '{"format":"aether-complete-backup"}';
+    desktopRuntime.enabled = true;
+    desktopSaveFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'C:\\Backups\\aether.json',
+    });
+    desktopOpenFileMock.mockRejectedValue(new Error('raw filesystem path'));
+    exportFullBackupMock.mockImplementation(async (options) => {
+      await options.download(json, 'aether.json');
+      return { warnings: [] };
+    });
+    await openSystemDataTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(
+      'The complete Version 2 backup was written, but readback verification failed.',
+    ));
+    expect(screen.getByRole('alert')).not.toHaveTextContent('raw filesystem path');
+    expect(prepareReplaceRestoreMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an exact-path, exact-content Electron export when parsed V2 validation fails', async () => {
+    const invalidJson = '{"format":"aether-complete-backup"}';
+    desktopRuntime.enabled = true;
+    desktopSaveFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'C:\\Backups\\invalid.json',
+    });
+    desktopOpenFileMock.mockResolvedValue({
+      cancelled: false,
+      filePath: 'C:\\Backups\\invalid.json',
+      content: invalidJson,
+    });
+    prepareReplaceRestoreMock.mockImplementation(() => {
+      throw new Error('Invalid Version 2 envelope');
+    });
+    exportFullBackupMock.mockImplementation(async (options) => {
+      await options.download(invalidJson, 'invalid.json');
+      return { warnings: [] };
+    });
+    await openSystemDataTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /create complete backup.*version 2/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(
+      'The complete Version 2 backup was written, but backup validation failed.',
+    ));
+    expect(prepareReplaceRestoreMock).toHaveBeenCalledWith(JSON.parse(invalidJson));
+    expect(screen.queryByText(/backup was written and verified/i)).not.toBeInTheDocument();
+  });
+
   it('opens the system recovery file input when deliberate recovery is requested from another tab', async () => {
     localStorage.setItem('aether.restoreVerification.v1', '{"state":"interrupted"}');
     render(

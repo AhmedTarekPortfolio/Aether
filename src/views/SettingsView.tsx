@@ -87,19 +87,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleExportData = async () => {
     setIsExportingBackup(true);
     setBackupStatus(null);
+    let desktopDeliveryFailure: string | null = null;
     try {
-      const result = await exportFullBackup();
+      const desktop = isDesktop();
+      const result = await exportFullBackup(desktop ? {
+        download: async (json, filename) => {
+          const saved = await desktopBridge.saveFile({
+            content: json,
+            title: 'Save complete Version 2 backup',
+            defaultPath: filename,
+          });
+          if (saved.cancelled || !saved.filePath) {
+            desktopDeliveryFailure = 'Complete Version 2 backup save was cancelled. No data was changed.';
+            throw new Error('Complete backup save was cancelled.');
+          }
+          desktopDeliveryFailure = [
+            'The complete Version 2 backup was written, but readback verification failed.',
+            'The saved file was not accepted as a verified backup.',
+          ].join(' ');
+          const readback = await desktopBridge.openFile({
+            title: 'Verify the saved complete backup',
+            buttonLabel: 'Verify Complete Backup',
+          });
+          if (
+            readback.cancelled
+            || readback.filePath !== saved.filePath
+            || typeof readback.content !== 'string'
+            || readback.content !== json
+          ) {
+            throw new Error('Complete backup readback verification failed.');
+          }
+          desktopDeliveryFailure = [
+            'The complete Version 2 backup was written, but backup validation failed.',
+            'The saved file was not accepted as a verified backup.',
+          ].join(' ');
+          prepareReplaceRestore(parseBackupJson(readback.content));
+          desktopDeliveryFailure = null;
+        },
+      } : undefined);
       setBackupStatus({
         kind: 'success',
         message: [
-          'Complete Version 2 backup download started.',
+          desktop
+            ? 'Complete Version 2 backup was written and verified.'
+            : 'Complete Version 2 backup download started.',
           ...result.warnings,
         ].join(' '),
       });
     } catch (error) {
       setBackupStatus({
         kind: 'error',
-        message: getBackupErrorMessage(error),
+        message: desktopDeliveryFailure ?? getBackupErrorMessage(error),
       });
     } finally {
       setIsExportingBackup(false);

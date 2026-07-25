@@ -673,7 +673,7 @@ describe('WP-01 persistence inventory invariants', () => {
     expect(importBody).not.toMatch(/\.(add|put|bulkAdd|update|delete|clear)\(/);
 
     const settingsSource = read('src/views/SettingsView.tsx');
-    expect(settingsSource).toContain('exportFullBackup()');
+    expect(settingsSource).toContain('exportFullBackup(');
     expect(settingsSource).toContain('prepareLegacyImport(parsed)');
     expect(settingsSource).toContain('importLegacyBackup(preparedLegacyImport)');
     expect(settingsSource).not.toMatch(/\bdb\.[a-z_]+\.toArray\(\)/);
