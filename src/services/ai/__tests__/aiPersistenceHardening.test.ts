@@ -60,6 +60,7 @@ function localOnlyResult(message = 'Local Search Results'): LocalOnlyResult {
     excerpts: [],
     message,
     isNoEvidenceWarning: true,
+    outcome: 'no-evidence',
   };
 }
 

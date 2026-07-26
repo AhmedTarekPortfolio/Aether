@@ -72,10 +72,11 @@ export const PrivacyPreviewModal: React.FC<PrivacyPreviewModalProps> = ({
               <FileText className="w-3.5 h-3.5 text-[var(--accent-blue)]" />
               Attached Study Resources ({preview.attachedResources.length})
             </label>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
               {preview.attachedResources.map((res) => (
                 <div key={res.id} className="p-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-glass)] text-[11px]">
-                  <span className="font-bold text-[var(--accent-purple)]">[{res.sourceId}]</span> {res.title}
+                  <div><span className="font-bold text-[var(--accent-purple)]">[{res.sourceId}]</span> {res.title}</div>
+                  <pre className="mt-1 whitespace-pre-wrap font-sans text-[10px] text-[var(--text-secondary)]">{res.excerpt}</pre>
                 </div>
               ))}
             </div>

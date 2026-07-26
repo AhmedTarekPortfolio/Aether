@@ -146,6 +146,7 @@ export function AppContent() {
             <AIAssistantView
               aiChats={store.aiChats}
               subjects={store.subjects}
+              notes={store.notes}
               tasks={store.tasks}
               userProfile={store.userProfile || null}
               onClearChats={store.clearAIChats}

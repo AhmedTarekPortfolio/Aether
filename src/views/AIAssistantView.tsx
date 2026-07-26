@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AIInteraction, UserProfile, Subject, Task, AIProviderProfile } from '../types';
+import { AIInteraction, UserProfile, Subject, Task, AIProviderProfile, Note } from '../types';
 import {
   getActiveProviderProfile,
   aiOrchestrator,
   PrivacyMode,
   PreparedAIRequest,
+  PreparedResourceExcerpt,
   normalizeAIError,
 } from '../services/ai';
 import { ModelSettingsModal } from '../components/ai/ModelSettingsModal';
@@ -62,6 +63,7 @@ const AI_MODE_OPTIONS: Array<{
 interface AIAssistantViewProps {
   aiChats: AIInteraction[];
   subjects: Subject[];
+  notes: Note[];
   tasks?: Task[];
   userProfile: UserProfile | null;
   onClearChats: () => Promise<void>;
@@ -70,6 +72,7 @@ interface AIAssistantViewProps {
 export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   aiChats,
   subjects,
+  notes,
   tasks = [],
   userProfile,
   onClearChats,
@@ -81,6 +84,9 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(subjects[0]?.id || '');
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [privacyMode, setPrivacyMode] = useState<PrivacyMode>('standard');
+  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
+  const [groundingState, setGroundingState] = useState<'idle' | 'loading' | 'no-evidence' | 'error'>('idle');
+  const [lastGroundedSources, setLastGroundedSources] = useState<PreparedResourceExcerpt[]>([]);
 
   // Active Provider Profile State
   const [activeProfile, setActiveProfile] = useState<AIProviderProfile>(getActiveProviderProfile());
@@ -97,6 +103,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const [streamingReasoning, setStreamingReasoning] = useState('');
   const [pendingPrompt, setPendingPrompt] = useState('');
   const activeRequestIdRef = useRef<string | null>(null);
+  const preparationControllerRef = useRef<AbortController | null>(null);
 
   // Unsaved assistant response recovery state
   const [unsavedAssistantText, setUnsavedAssistantText] = useState<string | null>(null);
@@ -120,6 +127,11 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     setActiveProfile(getActiveProviderProfile());
   }, []);
 
+  useEffect(() => {
+    setSelectedNoteIds((ids) => ids.filter((id) =>
+      notes.some((note) => note.id === id && note.subjectId === selectedSubjectId)));
+  }, [selectedSubjectId, notes]);
+
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
@@ -140,12 +152,19 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const handleSend = async (customPrompt?: string) => {
     const textToSend = (customPrompt || prompt).trim();
     if (!textToSend || ['preparing', 'saving_user', 'generating', 'saving_assistant'].includes(generationState)) return;
+    if (mode === 'ask_resources' && selectedNoteIds.length === 0) {
+      setProviderError({ title: 'Select at least one note', message: 'Ask Resources only sends notes you explicitly select.' });
+      return;
+    }
 
     setProviderError(null);
     setStreamingText('');
     setStreamingReasoning('');
     setUnsavedAssistantText(null);
     setGenerationState('preparing');
+    if (mode === 'ask_resources') setGroundingState('loading');
+    const preparationController = new AbortController();
+    preparationControllerRef.current = preparationController;
 
     try {
       const preparedResult = await aiOrchestrator.prepare({
@@ -157,18 +176,24 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
         taskId: selectedTaskId || undefined,
         privacyMode,
         conversationHistory: aiChats,
+        selectedResourceIds: mode === 'ask_resources' ? selectedNoteIds : undefined,
+        signal: preparationController.signal,
       });
+      preparationControllerRef.current = null;
 
       if (preparedResult.type === 'local_only_result') {
         // Local Tools Only or No-Evidence Result
         setGenerationState('saving_user');
         await aiOrchestrator.persistLocalOnlyResult(preparedResult);
+        setLastGroundedSources(preparedResult.excerpts);
+        setGroundingState(preparedResult.outcome === 'no-evidence' ? 'no-evidence' : 'idle');
         setPrompt('');
         setGenerationState('idle');
         return;
       }
 
       setPreparedRequest(preparedResult);
+      setGroundingState('idle');
 
       if (preparedResult.requiresConfirmation) {
         setIsPreviewOpen(true);
@@ -186,6 +211,9 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       const norm = normalizeAIError(err);
       setProviderError({ title: norm.title, message: norm.message, actionRequired: norm.actionRequired });
       setGenerationState('failed');
+      if (mode === 'ask_resources' && err?.name !== 'AbortError') setGroundingState('error');
+    } finally {
+      preparationControllerRef.current = null;
     }
   };
 
@@ -224,6 +252,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
           onError: () => {},
         },
       } : undefined);
+      setLastGroundedSources(prepared.preview.attachedResources);
 
       setGenerationState('idle');
       setStreamingText('');
@@ -247,6 +276,13 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   };
 
   const handleStopGenerating = () => {
+    if (preparationControllerRef.current) {
+      preparationControllerRef.current.abort();
+      preparationControllerRef.current = null;
+      setGenerationState('stopped');
+      setGroundingState('idle');
+      return;
+    }
     if (activeRequestIdRef.current) {
       aiOrchestrator.cancel(activeRequestIdRef.current);
       setGenerationState('stopped');
@@ -342,6 +378,40 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
           />
         </div>
       </header>
+
+      {mode === 'ask_resources' && (
+        <section aria-label="Ask Resources note selection" className="px-4 py-3 border-b border-[var(--border-glass)] bg-[var(--bg-secondary)]">
+          <div className="max-w-3xl mx-auto space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="text-xs text-[var(--text-secondary)]">Subject
+                <select aria-label="Grounding subject" value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)} className="mt-1 w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl">
+                  <option value="">Select subject</option>
+                  {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                </select>
+              </label>
+              <div className="text-xs text-[var(--text-secondary)]">
+                <div className="flex justify-between"><span>Notes to send</span><button type="button" onClick={() => setSelectedNoteIds([])} className="text-[var(--accent-purple)]">Clear selection</button></div>
+                <div className="mt-1 max-h-28 overflow-y-auto rounded-xl border border-[var(--border-glass)] p-2 space-y-1">
+                  {notes.filter((note) => note.subjectId === selectedSubjectId).length === 0 && <p className="p-2">No notes exist for this subject.</p>}
+                  {notes.filter((note) => note.subjectId === selectedSubjectId).map((note) => (
+                    <label key={note.id} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)]">
+                      <input type="checkbox" checked={selectedNoteIds.includes(note.id)} onChange={(event) => setSelectedNoteIds((ids) => event.target.checked ? [...ids, note.id] : ids.filter((id) => id !== note.id))} />
+                      <span>{note.title}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {selectedNoteIds.length > 0 && <div className="flex flex-wrap gap-1">{selectedNoteIds.map((id) => {
+              const note = notes.find((candidate) => candidate.id === id);
+              return note ? <button type="button" key={id} onClick={() => setSelectedNoteIds((ids) => ids.filter((value) => value !== id))} className="px-2 py-1 rounded-full bg-[var(--accent-purple)]/10 text-[var(--accent-purple)] text-[11px]">{note.title} ×</button> : null;
+            })}</div>}
+            {groundingState === 'loading' && <p role="status" className="text-xs">Searching selected notes…</p>}
+            {groundingState === 'no-evidence' && <p role="status" className="text-xs text-[var(--accent-amber)]">The selected notes do not contain enough evidence for that question.</p>}
+            {groundingState === 'error' && <div role="alert" className="text-xs text-[var(--accent-rose)]">Note retrieval failed. Your notes were not sent. You can retry.</div>}
+          </div>
+        </section>
+      )}
 
       {/* Main Conversation Viewport */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
@@ -444,6 +514,21 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
             </div>
             <div>{providerError.message}</div>
             {providerError.actionRequired && <div className="font-medium pt-1">{providerError.actionRequired}</div>}
+          </div>
+        )}
+
+        {lastGroundedSources.length > 0 && (
+          <div className="max-w-3xl mx-auto grid sm:grid-cols-2 gap-2" aria-label="Grounded answer sources">
+            {lastGroundedSources.map((source) => (
+              <button key={source.noteId} type="button" onClick={() => {
+                setMode('ask_resources');
+                setSelectedSubjectId(source.subjectId);
+                setSelectedNoteIds([source.noteId]);
+              }} className="text-left p-3 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-secondary)]">
+                <span className="font-bold text-[var(--accent-purple)]">[{source.sourceId}]</span> <span className="text-xs">{source.title}</span>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1 line-clamp-2">{source.excerpt}</p>
+              </button>
+            ))}
           </div>
         )}
 

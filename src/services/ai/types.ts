@@ -64,12 +64,20 @@ export interface NormalizedAIResponse {
 
 export interface PreparedResourceExcerpt {
   id: string;
+  noteId: string;
+  subjectId: string;
   sourceId: string; // e.g. "R1"
   title: string;
-  section?: string;
   excerpt: string;
-  page?: number;
+  score: number;
+  order: number;
 }
+
+export type RetrievalOutcome =
+  | { status: 'success'; excerpts: PreparedResourceExcerpt[] }
+  | { status: 'no-evidence'; excerpts: [] }
+  | { status: 'cancelled'; excerpts: [] }
+  | { status: 'error'; excerpts: []; error: unknown };
 
 export interface RequestPreviewMetadata {
   providerId: string;
@@ -92,6 +100,7 @@ export interface PrepareAIInput {
   selectedResourceIds?: string[];
   privacyMode?: PrivacyMode;
   conversationHistory?: AIConversation[];
+  signal?: AbortSignal;
 }
 
 export interface PreparedAIRequest {
@@ -117,6 +126,7 @@ export interface LocalOnlyResult {
   excerpts: PreparedResourceExcerpt[];
   message: string;
   isNoEvidenceWarning?: boolean;
+  outcome: 'success' | 'no-evidence';
 }
 
 export interface AIRequest {
