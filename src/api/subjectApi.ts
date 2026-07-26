@@ -1,7 +1,7 @@
 import { db } from '../db/database';
 import { Subject } from '../types';
 import { logger } from '../services/logger';
-import { StorageError } from './errors';
+import { NotFoundError, StorageError } from './errors';
 
 export interface SubjectReferences {
   tasks: number;
@@ -51,6 +51,7 @@ export async function getSubjects(): Promise<Subject[]> {
 
 export async function updateSubject(id: string, updates: Partial<Subject>): Promise<void> {
   try {
+    if (!await db.subjects.get(id)) throw new NotFoundError('Subject', id);
     if (updates.name !== undefined) {
       await validateSubjectName(updates.name, id);
     }
@@ -93,6 +94,7 @@ export async function checkSubjectReferences(subjectId: string): Promise<Subject
 
 export async function deleteSubject(subjectId: string): Promise<void> {
   try {
+    if (!await db.subjects.get(subjectId)) throw new NotFoundError('Subject', subjectId);
     const refs = await checkSubjectReferences(subjectId);
     if (!refs.isDeletable) {
       throw new Error(

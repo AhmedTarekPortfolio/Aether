@@ -170,6 +170,15 @@ describe('Mini Phase 6.6 - Core Entity CRUD Lifecycle Audit & Unit Tests', () =>
 
   /* ------------------- NOTE CRUD TESTS ------------------- */
   describe('Note CRUD & Deletion', () => {
+    beforeEach(async () => {
+      await db.subjects.add({
+        id: 'sub_cs',
+        name: 'Fixture Subject',
+        color: '#4F7CFF',
+        confidenceRating: 50,
+        createdAt: Date.now(),
+      });
+    });
     it('Note edit success (title, content, tags)', async () => {
       const note: Note = {
         id: 'note_1',

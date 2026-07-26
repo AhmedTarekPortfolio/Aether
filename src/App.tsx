@@ -123,6 +123,12 @@ export function AppContent() {
               onAddNote={store.addNote}
               onUpdateNote={store.updateNote}
               onDeleteNote={store.deleteNote}
+              onAddTopic={store.addTopic}
+              onUpdateTopic={store.updateTopic}
+              onDeleteTopic={store.deleteTopic}
+              onAddFlashcard={store.addFlashcard}
+              onUpdateFlashcard={store.updateFlashcard}
+              onDeleteFlashcard={store.deleteFlashcard}
             />
           )}
 
@@ -152,6 +158,13 @@ export function AppContent() {
               tasks={store.tasks}
               focusSessions={store.focusSessions}
               userProfile={store.userProfile || null}
+              goals={store.goals}
+              statistics={store.statistics}
+              achievementDefinitions={store.achievementDefinitions}
+              userAchievements={store.userAchievements}
+              onAddGoal={store.addGoal}
+              onUpdateGoal={store.updateGoal}
+              onDeleteGoal={store.deleteGoal}
             />
           )}
 

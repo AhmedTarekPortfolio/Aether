@@ -16,6 +16,10 @@ import {
   Note, 
   Flashcard, 
   Session, 
+  Goal,
+  Statistic,
+  AchievementDefinition,
+  UserAchievement,
   AIConversation, 
   NotificationItem, 
   UserProfile 
@@ -112,6 +116,22 @@ export function useAetherStore() {
     generation: refreshGeneration,
     rows: await db.notifications.orderBy('createdAt').reverse().toArray(),
   }), [refreshGeneration]);
+  const goalsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.goals.toArray(),
+  }), [refreshGeneration]);
+  const statisticsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.statistics.toArray(),
+  }), [refreshGeneration]);
+  const achievementDefinitionsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await api.getAchievementDefinitions(),
+  }), [refreshGeneration]);
+  const userAchievementsQuery = useLiveQuery(async () => ({
+    generation: refreshGeneration,
+    rows: await db.user_achievements.where('userId').equals('default_user').toArray(),
+  }), [refreshGeneration]);
 
   // Synthesize userProfile from users & settings tables for UI compatibility
   const userProfileQuery = useLiveQuery(async () => {
@@ -159,6 +179,10 @@ export function useAetherStore() {
       focusSessionsQuery?.generation,
       aiChatsQuery?.generation,
       notificationsQuery?.generation,
+      goalsQuery?.generation,
+      statisticsQuery?.generation,
+      achievementDefinitionsQuery?.generation,
+      userAchievementsQuery?.generation,
       userProfileQuery?.generation,
     ];
     if (queryGenerations.every((generation) => generation === pending.generation)) {
@@ -174,6 +198,10 @@ export function useAetherStore() {
     focusSessionsQuery,
     aiChatsQuery,
     notificationsQuery,
+    goalsQuery,
+    statisticsQuery,
+    achievementDefinitionsQuery,
+    userAchievementsQuery,
     userProfileQuery,
   ]);
 
@@ -216,6 +244,10 @@ export function useAetherStore() {
   const focusSessions = focusSessionsQuery?.rows ?? [];
   const aiChats = aiChatsQuery?.rows ?? [];
   const notifications = notificationsQuery?.rows ?? [];
+  const goals: Goal[] = goalsQuery?.rows ?? [];
+  const statistics: Statistic[] = statisticsQuery?.rows ?? [];
+  const achievementDefinitions: AchievementDefinition[] = achievementDefinitionsQuery?.rows ?? [];
+  const userAchievements: UserAchievement[] = userAchievementsQuery?.rows ?? [];
   const userProfile = userProfileQuery?.value ?? null;
 
   // Compute Next Best Action using explainable heuristics engine
@@ -290,6 +322,24 @@ export function useAetherStore() {
   const deleteNote = async (id: string) => {
     await api.deleteNote(id);
   };
+
+  const addTopic = async (topic: Omit<Topic, 'id'>) => {
+    await api.addTopic({ ...topic, id: `topic_${Date.now()}` });
+  };
+  const updateTopic = async (id: string, updates: Partial<Topic>) => api.updateTopic(id, updates);
+  const deleteTopic = async (id: string) => api.deleteTopic(id);
+
+  const addFlashcard = async (card: Omit<Flashcard, 'id' | 'userId'>) => {
+    await api.addFlashcard({ ...card, id: `card_${Date.now()}`, userId: 'default_user' });
+  };
+  const updateFlashcard = async (id: string, updates: Partial<Flashcard>) => api.updateFlashcard(id, updates);
+  const deleteFlashcard = async (id: string) => api.deleteFlashcard(id);
+
+  const addGoal = async (goal: Omit<Goal, 'id' | 'userId' | 'createdAt'>) => {
+    await api.addGoal({ ...goal, id: `goal_${Date.now()}`, userId: 'default_user', createdAt: Date.now() });
+  };
+  const updateGoal = async (id: string, updates: Partial<Goal>) => api.updateGoal(id, updates);
+  const deleteGoal = async (id: string) => api.deleteGoal(id);
 
   // Focus Session Mutations via API layer
   const logFocusSession = async (session: Omit<Session, 'id' | 'userId' | 'completedAt'>) => {
@@ -373,6 +423,10 @@ export function useAetherStore() {
     focusSessions,
     aiChats,
     notifications,
+    goals,
+    statistics,
+    achievementDefinitions,
+    userAchievements,
     userProfile,
     nextBestAction,
 
@@ -386,6 +440,15 @@ export function useAetherStore() {
     addNote: addNote as (note: Omit<Note, 'id' | 'userId' | 'updatedAt'>) => Promise<void>,
     updateNote,
     deleteNote,
+    addTopic,
+    updateTopic,
+    deleteTopic,
+    addFlashcard,
+    updateFlashcard,
+    deleteFlashcard,
+    addGoal,
+    updateGoal,
+    deleteGoal,
     logFocusSession: logFocusSession as (session: Omit<Session, 'id' | 'completedAt'>) => Promise<void>,
     clearAIChats,
     markNotificationAsRead,

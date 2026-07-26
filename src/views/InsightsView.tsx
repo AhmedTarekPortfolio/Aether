@@ -1,187 +1,90 @@
-import React from 'react';
-import { Card } from '../components/ui/Card';
+import React, { useState } from 'react';
+import { Award, CheckCircle2, Clock, Plus, Trash2 } from 'lucide-react';
+import { AchievementDefinition, FocusSession, Goal, Statistic, Subject, Task, UserAchievement, UserProfile } from '../types';
 import { Badge } from '../components/ui/Badge';
-import { Subject, Task, FocusSession, UserProfile } from '../types';
-import { BarChart2, TrendingUp, Award, CheckCircle2, Clock, Zap } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar 
-} from 'recharts';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { Modal } from '../components/ui/Modal';
 
 interface InsightsViewProps {
   subjects: Subject[];
   tasks: Task[];
   focusSessions: FocusSession[];
   userProfile: UserProfile | null;
+  goals: Goal[];
+  statistics: Statistic[];
+  achievementDefinitions: AchievementDefinition[];
+  userAchievements: UserAchievement[];
+  onAddGoal: (goal: Omit<Goal, 'id' | 'userId' | 'createdAt'>) => Promise<void>;
+  onUpdateGoal: (id: string, updates: Partial<Goal>) => Promise<void>;
+  onDeleteGoal: (id: string) => Promise<void>;
 }
 
 export const InsightsView: React.FC<InsightsViewProps> = ({
-  subjects,
-  tasks,
-  focusSessions,
-  userProfile,
+  subjects, tasks, focusSessions, userProfile, goals, statistics,
+  achievementDefinitions, userAchievements, onAddGoal, onUpdateGoal, onDeleteGoal,
 }) => {
-  const totalFocusMinutes = focusSessions.reduce((sum, s) => sum + s.durationMinutes, 0);
-  const totalFocusHours = (totalFocusMinutes / 60).toFixed(1);
-
-  const completedTasksCount = tasks.filter((t) => t.status === 'completed').length;
-  const totalTasksCount = tasks.length || 1;
-  const completionRate = Math.round((completedTasksCount / totalTasksCount) * 100);
-
-  const goalHours = userProfile?.studyGoalHoursWeekly || 25;
-  const goalProgressPercent = Math.min(100, Math.round((Number(totalFocusHours) / goalHours) * 100));
-
-  // 7-Day Focus Distribution Data for AreaChart
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const focusTrendData = days.map((day, idx) => ({
-    day,
-    minutes: [45, 90, 60, 120, 75, 45, 90][idx] || 30,
-    target: 90,
-  }));
-
-  // Subject Mastery BarChart Data
-  const subjectMasteryData = subjects.map((s) => ({
-    name: s.code || s.name.substring(0, 10),
-    confidence: s.confidenceRating,
-    fill: s.color,
-  }));
+  const [goalModal, setGoalModal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [title, setTitle] = useState('');
+  const [target, setTarget] = useState(1);
+  const [current, setCurrent] = useState(0);
+  const [error, setError] = useState('');
+  const totalFocusMinutes = focusSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
+  const completedTasks = tasks.filter((task) => task.status === 'completed').length;
+  const completionRate = tasks.length ? Math.round((completedTasks / tasks.length) * 100) : 0;
+  const openGoal = (goal?: Goal) => {
+    setEditingGoal(goal ?? null); setTitle(goal?.title ?? ''); setTarget(goal?.targetValue ?? 1);
+    setCurrent(goal?.currentValue ?? 0); setError(''); setGoalModal(true);
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
-      {/* Top Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-mono text-[var(--text-secondary)]">
-            <span>WEEKLY FOCUS TIME</span>
-            <Clock className="w-4 h-4 text-[var(--accent-blue)]" />
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)]">{totalFocusHours} hrs</div>
-          <div className="text-xs text-[var(--accent-emerald)] flex items-center gap-1 font-medium">
-            <TrendingUp className="w-3.5 h-3.5" />
-            +14% vs last week
-          </div>
-        </Card>
-
-        <Card className="p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-mono text-[var(--text-secondary)]">
-            <span>WEEKLY GOAL PROGRESS</span>
-            <Zap className="w-4 h-4 text-[var(--accent-amber)]" />
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)]">{goalProgressPercent}%</div>
-          <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
-            <div
-              className="bg-[var(--accent-amber)] h-full rounded-full transition-all duration-500"
-              style={{ width: `${goalProgressPercent}%` }}
-            />
-          </div>
-        </Card>
-
-        <Card className="p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-mono text-[var(--text-secondary)]">
-            <span>TASK COMPLETION RATE</span>
-            <CheckCircle2 className="w-4 h-4 text-[var(--accent-emerald)]" />
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)]">{completionRate}%</div>
-          <div className="text-xs text-[var(--text-secondary)]">
-            {completedTasksCount} of {tasks.length} tasks finished
-          </div>
-        </Card>
-
-        <Card className="p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-mono text-[var(--text-secondary)]">
-            <span>STUDY CONSISTENCY INDEX</span>
-            <Award className="w-4 h-4 text-[var(--accent-purple)]" />
-          </div>
-          <div className="text-3xl font-bold text-[var(--text-primary)]">94 / 100</div>
-          <Badge variant="purple" size="sm">Top 5% Student Cohort</Badge>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <Card className="p-5"><Clock className="w-4 h-4 text-[var(--accent-blue)]" /><p className="text-xs text-[var(--text-secondary)]">PERSISTED FOCUS TIME</p><p className="text-3xl font-bold">{(totalFocusMinutes / 60).toFixed(1)} hrs</p></Card>
+        <Card className="p-5"><CheckCircle2 className="w-4 h-4 text-[var(--accent-emerald)]" /><p className="text-xs text-[var(--text-secondary)]">TASK COMPLETION</p><p className="text-3xl font-bold">{completionRate}%</p><p className="text-xs text-[var(--text-secondary)]">{completedTasks} of {tasks.length} tasks</p></Card>
+        <Card className="p-5"><Award className="w-4 h-4 text-[var(--accent-purple)]" /><p className="text-xs text-[var(--text-secondary)]">SAVED STATISTICS</p><p className="text-3xl font-bold">{statistics.length}</p><p className="text-xs text-[var(--text-secondary)]">persisted metric records</p></Card>
       </div>
 
-      {/* Visual Analytics Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* 7-Day Focus Area Chart */}
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <BarChart2 className="w-5 h-5 text-[var(--accent-blue)]" />
-                7-Day Focus Duration Trend (Minutes)
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)]">Daily deep work vs target baseline</p>
-            </div>
-            <Badge variant="blue" size="sm">7 Days</Badge>
-          </div>
+      <section className="space-y-4">
+        <div className="flex justify-between"><div><h2 className="font-bold">Goals</h2><p className="text-xs text-[var(--text-secondary)]">Active and completed goals are stored locally.</p></div><Button size="sm" onClick={() => openGoal()}><Plus className="w-4 h-4" /> Add Goal</Button></div>
+        <div className="grid md:grid-cols-2 gap-4">
+          {goals.length === 0 && <Card className="p-8 text-center text-sm text-[var(--text-secondary)]">No goals yet.</Card>}
+          {goals.map((goal) => <Card key={goal.id} className="p-4 space-y-3">
+            <div className="flex justify-between"><div><h3 className="font-bold">{goal.title}</h3><Badge variant={goal.status === 'completed' ? 'emerald' : 'blue'} size="sm">{goal.status}</Badge></div><Button variant="danger" size="sm" onClick={() => void onDeleteGoal(goal.id)}><Trash2 className="w-4 h-4" /></Button></div>
+            <p className="text-xs text-[var(--text-secondary)]">{goal.currentValue} / {goal.targetValue} {goal.unit}</p>
+            <input aria-label={`Progress for ${goal.title}`} type="range" min="0" max={goal.targetValue} value={Math.min(goal.currentValue, goal.targetValue)} onChange={(event) => void onUpdateGoal(goal.id, { currentValue: Number(event.target.value) })} className="w-full" />
+            <div className="flex gap-2"><Button size="sm" variant="ghost" onClick={() => openGoal(goal)}>Edit</Button><Button size="sm" variant="secondary" onClick={() => void onUpdateGoal(goal.id, { status: goal.status === 'completed' ? 'active' : 'completed' })}>{goal.status === 'completed' ? 'Reopen' : 'Complete'}</Button></div>
+          </Card>)}
+        </div>
+      </section>
 
-          <div className="h-64 w-full pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={focusTrendData}>
-                <defs>
-                  <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--accent-blue)" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="var(--accent-blue)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={12} />
-                <YAxis stroke="var(--text-muted)" fontSize={12} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderColor: 'var(--border-glass-hover)',
-                    borderRadius: '12px',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="minutes"
-                  stroke="var(--accent-blue)"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorMinutes)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      <section className="space-y-4"><div><h2 className="font-bold">Achievements</h2><p className="text-xs text-[var(--text-secondary)]">Canonical definitions and your preserved progress.</p></div>
+        <div className="grid md:grid-cols-2 gap-4">{achievementDefinitions.map((definition) => {
+          const earned = userAchievements.find((item) => item.achievementId === definition.id);
+          return <Card key={definition.id} className="p-4"><div className="flex justify-between"><h3 className="font-bold">{definition.title}</h3><Badge variant={earned?.unlockedAt ? 'emerald' : 'gray'} size="sm">{earned?.unlockedAt ? 'Earned' : 'Unearned'}</Badge></div><p className="text-xs text-[var(--text-secondary)]">{definition.description}</p><p className="text-xs mt-2">Progress: {earned?.progress ?? 0} / {definition.targetValue}</p></Card>;
+        })}</div>
+      </section>
 
-        {/* Subject Confidence Bar Chart */}
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Award className="w-5 h-5 text-[var(--accent-emerald)]" />
-                Subject Confidence Ratings (%)
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)]">Calculated from quiz scores & focus logs</p>
-            </div>
-            <Badge variant="emerald" size="sm">4 Courses</Badge>
-          </div>
+      <section className="space-y-4"><h2 className="font-bold">Subject confidence</h2><div className="grid md:grid-cols-2 gap-3">{subjects.length === 0 && <p className="text-sm text-[var(--text-secondary)]">No subjects to summarize.</p>}{subjects.map((subject) => <Card key={subject.id} className="p-4 flex justify-between"><span>{subject.code || subject.name}</span><strong>{subject.confidenceRating}%</strong></Card>)}</div></section>
 
-          <div className="h-64 w-full pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={subjectMasteryData}>
-                <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} />
-                <YAxis stroke="var(--text-muted)" fontSize={12} domain={[0, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderColor: 'var(--border-glass-hover)',
-                    borderRadius: '12px',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-                <Bar dataKey="confidence" radius={[8, 8, 0, 0]} fill="var(--accent-emerald)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      </div>
+      <Modal isOpen={goalModal} onClose={() => setGoalModal(false)} title={editingGoal ? 'Edit Goal' : 'Create Goal'}>
+        <form className="space-y-4" onSubmit={async (event) => {
+          event.preventDefault(); setError('');
+          try {
+            const values = { title, targetValue: target, currentValue: current };
+            if (editingGoal) await onUpdateGoal(editingGoal.id, values);
+            else await onAddGoal({ ...values, description: '', type: 'custom', unit: 'units', status: 'active', subjectId: null, deadline: null, completedAt: null });
+            setGoalModal(false);
+          } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save goal.'); }
+        }}>
+          {error && <p role="alert" className="text-xs text-[var(--accent-rose)]">{error}</p>}
+          <label className="block text-xs">Title *<input required value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full px-3 py-2 bg-[var(--bg-input)] rounded-xl border border-[var(--border-glass)]" /></label>
+          <div className="grid grid-cols-2 gap-4"><label className="block text-xs">Target<input type="number" min="1" value={target} onChange={(event) => setTarget(Number(event.target.value))} className="mt-1 w-full px-3 py-2 bg-[var(--bg-input)] rounded-xl border border-[var(--border-glass)]" /></label><label className="block text-xs">Progress<input type="number" min="0" value={current} onChange={(event) => setCurrent(Number(event.target.value))} className="mt-1 w-full px-3 py-2 bg-[var(--bg-input)] rounded-xl border border-[var(--border-glass)]" /></label></div>
+          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setGoalModal(false)}>Cancel</Button><Button type="submit">Save Goal</Button></div>
+        </form>
+      </Modal>
+      <p className="text-[10px] text-[var(--text-muted)]">Weekly target: {userProfile?.studyGoalHoursWeekly ?? 0} hours. All metrics above derive from persisted local records.</p>
     </div>
   );
 };

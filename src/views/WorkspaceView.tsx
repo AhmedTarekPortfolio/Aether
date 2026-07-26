@@ -48,6 +48,12 @@ interface WorkspaceViewProps {
   onAddNote: (note: Omit<Note, 'id' | 'updatedAt'>) => void;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onDeleteNote?: (id: string) => Promise<void> | void;
+  onAddTopic: (topic: Omit<Topic, 'id'>) => Promise<void>;
+  onUpdateTopic: (id: string, updates: Partial<Topic>) => Promise<void>;
+  onDeleteTopic: (id: string) => Promise<void>;
+  onAddFlashcard: (card: Omit<Flashcard, 'id' | 'userId'>) => Promise<void>;
+  onUpdateFlashcard: (id: string, updates: Partial<Flashcard>) => Promise<void>;
+  onDeleteFlashcard: (id: string) => Promise<void>;
 }
 
 // Framer Motion Animation Variants
@@ -81,6 +87,12 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   onAddNote,
   onUpdateNote,
   onDeleteNote,
+  onAddTopic,
+  onUpdateTopic,
+  onDeleteTopic,
+  onAddFlashcard,
+  onUpdateFlashcard,
+  onDeleteFlashcard,
 }) => {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(
     subjects[0]?.id || null
@@ -160,6 +172,29 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   // Flashcard Review State
   const [flashcardIdx, setFlashcardIdx] = useState(0);
   const [showFlashcardBack, setShowFlashcardBack] = useState(false);
+  const [assetModal, setAssetModal] = useState<'topic' | 'flashcard' | null>(null);
+  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+  const [editingFlashcard, setEditingFlashcard] = useState<Flashcard | null>(null);
+  const [assetTitle, setAssetTitle] = useState('');
+  const [assetAnswer, setAssetAnswer] = useState('');
+  const [assetMastery, setAssetMastery] = useState(0);
+  const [assetTopicId, setAssetTopicId] = useState('');
+  const [assetError, setAssetError] = useState('');
+  const openTopicForm = (topic?: Topic) => {
+    setEditingTopic(topic ?? null);
+    setAssetTitle(topic?.title ?? '');
+    setAssetMastery(topic?.masteryLevel ?? 0);
+    setAssetError('');
+    setAssetModal('topic');
+  };
+  const openFlashcardForm = (card?: Flashcard) => {
+    setEditingFlashcard(card ?? null);
+    setAssetTitle(card?.front ?? '');
+    setAssetAnswer(card?.back ?? '');
+    setAssetTopicId(card?.topicId ?? '');
+    setAssetError('');
+    setAssetModal('flashcard');
+  };
 
   // Derived Business Logic & Metrics
   const overview = calculateWorkspaceOverview(subjects, topics, notes, flashcards);
@@ -628,6 +663,11 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
         {activeTab === 'flashcards' && (
           <div className="space-y-4 max-w-2xl mx-auto">
+            <div className="flex justify-end">
+              <Button size="sm" variant="purple" onClick={() => openFlashcardForm()} disabled={!selectedSubjectId}>
+                <Plus className="w-4 h-4" /> Add Flashcard
+              </Button>
+            </div>
             {filteredFlashcards.length > 0 ? (
               <Card className="p-8 text-center space-y-6 border border-[var(--border-glass)]">
                 <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-mono">
@@ -657,6 +697,12 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                 </div>
 
                 <div className="flex items-center justify-center gap-3">
+                  <Button variant="ghost" size="sm" onClick={() => openFlashcardForm(filteredFlashcards[flashcardIdx % filteredFlashcards.length])}>
+                    Edit
+                  </Button>
+                  <Button variant="danger" size="sm" onClick={() => void onDeleteFlashcard(filteredFlashcards[flashcardIdx % filteredFlashcards.length].id)}>
+                    Delete
+                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -689,6 +735,11 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
         {activeTab === 'topics' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 flex justify-end">
+              <Button size="sm" variant="secondary" onClick={() => openTopicForm()} disabled={!selectedSubjectId}>
+                <Plus className="w-4 h-4" /> Add Topic
+              </Button>
+            </div>
             {filteredTopics.length > 0 ? (
               filteredTopics.map((top) => (
                 <Card key={top.id} className="p-4 space-y-2 border border-[var(--border-glass)]">
@@ -700,6 +751,12 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     <Badge variant="emerald" size="sm">
                       {top.masteryLevel}% Mastery
                     </Badge>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" onClick={() => openTopicForm(top)}>Edit</Button>
+                    <Button size="sm" variant="danger" onClick={async () => {
+                      try { await onDeleteTopic(top.id); } catch (error) { setAssetError(error instanceof Error ? error.message : 'Unable to delete topic.'); }
+                    }}>Delete</Button>
                   </div>
                 </Card>
               ))
@@ -873,6 +930,57 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           </Card>
         </div>
       </motion.section>
+
+      {/* Add / Edit Subject Modal */}
+      <Modal isOpen={assetModal === 'topic'} onClose={() => setAssetModal(null)} title={editingTopic ? 'Edit Topic' : 'Add Topic'}>
+        <form className="space-y-4" onSubmit={async (event) => {
+          event.preventDefault();
+          setAssetError('');
+          try {
+            if (!selectedSubjectId) throw new Error('Select a subject first.');
+            if (editingTopic) await onUpdateTopic(editingTopic.id, { title: assetTitle, masteryLevel: assetMastery });
+            else await onAddTopic({ subjectId: selectedSubjectId, title: assetTitle, masteryLevel: assetMastery });
+            setAssetModal(null);
+          } catch (error) { setAssetError(error instanceof Error ? error.message : 'Unable to save topic.'); }
+        }}>
+          {assetError && <p role="alert" className="text-xs text-[var(--accent-rose)]">{assetError}</p>}
+          <label className="block text-xs text-[var(--text-secondary)]">Topic title *
+            <input required value={assetTitle} onChange={(e) => setAssetTitle(e.target.value)} className="mt-1 w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-sm" />
+          </label>
+          <label className="block text-xs text-[var(--text-secondary)]">Mastery (0–100)
+            <input type="number" min="0" max="100" value={assetMastery} onChange={(e) => setAssetMastery(Number(e.target.value))} className="mt-1 w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-sm" />
+          </label>
+          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setAssetModal(null)}>Cancel</Button><Button type="submit">Save Topic</Button></div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={assetModal === 'flashcard'} onClose={() => setAssetModal(null)} title={editingFlashcard ? 'Edit Flashcard' : 'Add Flashcard'}>
+        <form className="space-y-4" onSubmit={async (event) => {
+          event.preventDefault();
+          setAssetError('');
+          try {
+            if (!selectedSubjectId) throw new Error('Select a subject first.');
+            const values = { subjectId: selectedSubjectId, topicId: assetTopicId || undefined, front: assetTitle, back: assetAnswer };
+            if (editingFlashcard) await onUpdateFlashcard(editingFlashcard.id, values);
+            else await onAddFlashcard({ ...values, easeFactor: 2.5, interval: 0, repetitions: 0, nextReviewDate: Date.now() });
+            setAssetModal(null);
+          } catch (error) { setAssetError(error instanceof Error ? error.message : 'Unable to save flashcard.'); }
+        }}>
+          {assetError && <p role="alert" className="text-xs text-[var(--accent-rose)]">{assetError}</p>}
+          <label className="block text-xs text-[var(--text-secondary)]">Question *
+            <textarea required value={assetTitle} onChange={(e) => setAssetTitle(e.target.value)} className="mt-1 w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-sm" />
+          </label>
+          <label className="block text-xs text-[var(--text-secondary)]">Answer *
+            <textarea required value={assetAnswer} onChange={(e) => setAssetAnswer(e.target.value)} className="mt-1 w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-sm" />
+          </label>
+          <label className="block text-xs text-[var(--text-secondary)]">Topic
+            <select value={assetTopicId} onChange={(e) => setAssetTopicId(e.target.value)} className="mt-1 w-full px-3.5 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl text-sm">
+              <option value="">No topic</option>{filteredTopics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
+            </select>
+          </label>
+          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setAssetModal(null)}>Cancel</Button><Button type="submit" variant="purple">Save Flashcard</Button></div>
+        </form>
+      </Modal>
 
       {/* Add / Edit Subject Modal */}
       <Modal

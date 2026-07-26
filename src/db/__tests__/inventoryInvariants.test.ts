@@ -184,7 +184,7 @@ const API_MODULES = {
   },
   topicApi: {
     module: topicApi,
-    exports: ['getTopics'],
+    exports: ['addTopic', 'deleteTopic', 'getTopics', 'updateTopic'],
     source: 'src/api/topicApi.ts',
   },
   taskApi: {
@@ -199,7 +199,7 @@ const API_MODULES = {
   },
   flashcardApi: {
     module: flashcardApi,
-    exports: ['getFlashcards'],
+    exports: ['addFlashcard', 'deleteFlashcard', 'getFlashcards', 'updateFlashcard'],
     source: 'src/api/flashcardApi.ts',
   },
   sessionApi: {
@@ -209,7 +209,7 @@ const API_MODULES = {
   },
   goalApi: {
     module: goalApi,
-    exports: ['getGoals'],
+    exports: ['addGoal', 'deleteGoal', 'getGoals', 'updateGoal'],
     source: 'src/api/goalApi.ts',
   },
   aiConversationApi: {
@@ -267,12 +267,12 @@ const DOCUMENTED_RUNTIME_CRUD: Record<TableName, {
     missing: ['putSubject', 'clearSubjects'],
   },
   topics: {
-    add: [],
+    add: ['addTopic'],
     put: [],
-    update: [],
-    delete: [],
+    update: ['updateTopic'],
+    delete: ['deleteTopic'],
     clear: [],
-    missing: ['addTopic', 'putTopic', 'updateTopic', 'deleteTopic', 'clearTopics'],
+    missing: ['putTopic', 'clearTopics'],
   },
   tasks: {
     add: ['addTask'],
@@ -291,12 +291,12 @@ const DOCUMENTED_RUNTIME_CRUD: Record<TableName, {
     missing: ['putNote', 'clearNotes'],
   },
   flashcards: {
-    add: [],
+    add: ['addFlashcard'],
     put: [],
-    update: [],
-    delete: [],
+    update: ['updateFlashcard'],
+    delete: ['deleteFlashcard'],
     clear: [],
-    missing: ['addFlashcard', 'putFlashcard', 'updateFlashcard', 'deleteFlashcard', 'clearFlashcards'],
+    missing: ['putFlashcard', 'clearFlashcards'],
   },
   sessions: {
     add: ['addSession'],
@@ -307,12 +307,12 @@ const DOCUMENTED_RUNTIME_CRUD: Record<TableName, {
     missing: ['putSession', 'updateSession', 'deleteSession', 'clearSessions'],
   },
   goals: {
-    add: [],
+    add: ['addGoal'],
     put: [],
-    update: [],
-    delete: [],
+    update: ['updateGoal'],
+    delete: ['deleteGoal'],
     clear: [],
-    missing: ['addGoal', 'putGoal', 'updateGoal', 'deleteGoal', 'clearGoals'],
+    missing: ['putGoal', 'clearGoals'],
   },
   ai_conversations: {
     add: ['addAIConversation'],
@@ -379,12 +379,12 @@ const DOCUMENTED_API_EXPORTS: Record<TableName, readonly string[]> = {
     'checkSubjectReferences',
     'validateSubjectName',
   ],
-  topics: ['getTopics'],
+  topics: ['getTopics', 'addTopic', 'updateTopic', 'deleteTopic'],
   tasks: ['getTasks', 'getTaskById', 'addTask', 'updateTask', 'deleteTask'],
   notes: ['getNotes', 'addNote', 'updateNote', 'deleteNote'],
-  flashcards: ['getFlashcards'],
+  flashcards: ['getFlashcards', 'addFlashcard', 'updateFlashcard', 'deleteFlashcard'],
   sessions: ['getSessions', 'addSession'],
-  goals: ['getGoals'],
+  goals: ['getGoals', 'addGoal', 'updateGoal', 'deleteGoal'],
   ai_conversations: ['getAIConversations', 'addAIConversation', 'clearAIConversations'],
   statistics: ['getStatistics'],
   achievement_definitions: ['getAchievementDefinitions'],
@@ -401,11 +401,11 @@ const DOCUMENTED_DIRECT_ACCESS: Record<TableName, readonly string[]> = {
   notes: ['database.ts', 'useAppStore.ts', 'SettingsView.tsx', 'subjectApi.ts'],
   flashcards: ['database.ts', 'useAppStore.ts', 'SettingsView.tsx', 'subjectApi.ts'],
   sessions: ['database.ts', 'useAppStore.ts', 'SettingsView.tsx', 'subjectApi.ts'],
-  goals: ['database.ts', 'subjectApi.ts'],
+  goals: ['database.ts', 'useAppStore.ts', 'subjectApi.ts'],
   ai_conversations: ['database.ts', 'useAppStore.ts', 'subjectApi.ts'],
-  statistics: ['database.ts'],
+  statistics: ['database.ts', 'useAppStore.ts'],
   achievement_definitions: ['database.ts'],
-  user_achievements: ['database.ts'],
+  user_achievements: ['database.ts', 'useAppStore.ts'],
   notifications: ['database.ts', 'useAppStore.ts'],
 };
 
@@ -434,6 +434,9 @@ const REACTIVE_TABLES = [
   'sessions',
   'ai_conversations',
   'notifications',
+  'goals',
+  'statistics',
+  'user_achievements',
 ] as const;
 
 const LEGACY_EXPORT_TABLES = [
@@ -618,7 +621,7 @@ describe('WP-01 persistence inventory invariants', () => {
         'db.ai_conversations.clear(',
       ],
       statisticApi: ['db.statistics.toArray('],
-      achievementApi: ['db.achievement_definitions.toArray(', 'db.user_achievements.toArray('],
+      achievementApi: ['CANONICAL_ACHIEVEMENT_DEFINITIONS.map(', 'db.user_achievements.toArray('],
       notificationApi: ['db.notifications.orderBy(', 'db.notifications.update('],
     };
 
