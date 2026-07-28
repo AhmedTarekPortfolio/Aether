@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validateAIRequest,
   validateAssetFinalisationRequest,
+  validateReadManagedTextAssetRequest,
   validateCredentialInput,
   validateSourceFileSelectionRequest,
   validateStagingToken,
@@ -111,5 +112,23 @@ describe('Electron IPC Input Validation', () => {
       stagingToken: token,
       contentHash: 'b'.repeat(64),
     }).valid).toBe(false);
+  });
+
+  it('strictly validates managed text read identities without accepting absolute paths', () => {
+    const hash = 'a'.repeat(64);
+    expect(validateReadManagedTextAssetRequest({
+      relativePath: `assets/aa/${hash}.txt`,
+      expectedContentHash: hash,
+    })).toBe(true);
+    for (const input of [
+      null,
+      { relativePath: `assets/aa/${hash}.txt` },
+      { relativePath: 'C:\\private.txt', expectedContentHash: hash },
+      { relativePath: '../private.txt', expectedContentHash: hash },
+      { relativePath: `assets/aa/${hash}.txt`, expectedContentHash: 'A'.repeat(64) },
+      { relativePath: `assets/aa/${hash}.txt`, expectedContentHash: hash, encoding: 'utf16' },
+    ]) {
+      expect(validateReadManagedTextAssetRequest(input)).toBe(false);
+    }
   });
 });

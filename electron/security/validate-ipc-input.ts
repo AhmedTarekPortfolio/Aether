@@ -1,5 +1,6 @@
 import { DesktopAIRequest, DesktopCredentialInput } from '../types/desktop-api.js';
 import {
+  type ReadManagedTextAssetRequest,
   SOURCE_FILE_KINDS,
   SOURCE_MAXIMUM_FILE_COUNT,
   SOURCE_STAGING_TOKEN_MAX_LENGTH,
@@ -128,4 +129,24 @@ export function validateAssetFinalisationRequest(input: unknown): ValidationResu
     return { valid: false, error: 'Finalisation request must contain only stagingToken' };
   }
   return validateStagingToken(input.stagingToken);
+}
+
+export function validateReadManagedTextAssetRequest(
+  input: unknown,
+): input is ReadManagedTextAssetRequest {
+  if (!isStrictObject(input, ['relativePath', 'expectedContentHash'])) return false;
+  if (
+    typeof input.relativePath !== 'string'
+    || typeof input.expectedContentHash !== 'string'
+  ) return false;
+  const segments = input.relativePath.split('/');
+  return input.relativePath.length > 0
+    && input.relativePath.length <= 256
+    && input.relativePath.startsWith('assets/')
+    && !input.relativePath.includes('\\')
+    && !input.relativePath.includes(':')
+    && !input.relativePath.includes('\0')
+    && !input.relativePath.startsWith('/')
+    && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+    && /^[a-f0-9]{64}$/.test(input.expectedContentHash);
 }

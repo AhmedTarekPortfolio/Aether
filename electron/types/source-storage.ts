@@ -44,6 +44,19 @@ export interface AssetFinalisationReceipt {
   reusedExistingAssetFile: boolean;
 }
 
+export interface ReadManagedTextAssetRequest {
+  relativePath: string;
+  expectedContentHash: string;
+}
+
+export interface ReadManagedTextAssetReceipt {
+  text: string;
+  contentHash: string;
+  mimeType: 'text/plain' | 'text/markdown';
+  extension: 'txt' | 'md' | 'markdown';
+  byteSize: number;
+}
+
 export type SourceStorageErrorCode =
   | 'INVALID_REQUEST'
   | 'DESKTOP_CAPABILITY_UNAVAILABLE'
@@ -59,6 +72,10 @@ export type SourceStorageErrorCode =
   | 'STAGING_HASH_MISMATCH'
   | 'ASSET_PROMOTION_FAILED'
   | 'ASSET_PATH_CONFLICT'
+  | 'MANAGED_ASSET_NOT_FOUND'
+  | 'MANAGED_ASSET_IDENTITY_MISMATCH'
+  | 'INVALID_TEXT_ENCODING'
+  | 'INVALID_TEXT_CONTENT'
   | 'OPERATION_CANCELLED'
   | 'SOURCE_STORAGE_UNAVAILABLE';
 
@@ -78,6 +95,7 @@ export interface SourceStageOperationValue {
 
 export type SourceStageOperationResult = SourceOperationResult<SourceStageOperationValue>;
 export type AssetFinalisationResult = SourceOperationResult<AssetFinalisationReceipt>;
+export type ReadManagedTextAssetResult = SourceOperationResult<ReadManagedTextAssetReceipt>;
 
 export interface SourceCancellationResult {
   cancelled: boolean;

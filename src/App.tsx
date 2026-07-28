@@ -14,6 +14,7 @@ import {
 import { HomeView } from './views/HomeView';
 import { PlanView } from './views/PlanView';
 import { WorkspaceView } from './views/WorkspaceView';
+import { SourcesView } from './views/SourcesView';
 import { FocusView } from './views/FocusView';
 import { AIAssistantView } from './views/AIAssistantView';
 import { InsightsView } from './views/InsightsView';
@@ -129,6 +130,16 @@ export function AppContent() {
               onAddFlashcard={store.addFlashcard}
               onUpdateFlashcard={store.updateFlashcard}
               onDeleteFlashcard={store.deleteFlashcard}
+            />
+          )}
+
+          {store.activeTab === 'sources' && (
+            <SourcesView
+              userId={store.userProfile?.id || 'default_user'}
+              subjects={store.subjects}
+              topics={store.topics}
+              tasks={store.tasks}
+              notes={store.notes}
             />
           )}
 

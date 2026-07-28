@@ -143,6 +143,29 @@ describe('Desktop Bridge & Runtime Detection', () => {
     expect(selectAndStage).toHaveBeenCalledWith(request);
   });
 
+  it('reads managed text only through the source identity contract', async () => {
+    const readTextAsset = vi.fn().mockResolvedValue({
+      ok: true,
+      value: {
+        text: 'safe text',
+        contentHash: 'a'.repeat(64),
+        mimeType: 'text/plain',
+        extension: 'txt',
+        byteSize: 9,
+      },
+    });
+    (window as any).aetherDesktop = { sources: { readTextAsset } };
+    const request = {
+      relativePath: `assets/aa/${'a'.repeat(64)}.txt`,
+      expectedContentHash: 'a'.repeat(64),
+    };
+    await expect(desktopBridge.readManagedTextAsset(request)).resolves.toMatchObject({
+      ok: true,
+      value: { text: 'safe text' },
+    });
+    expect(readTextAsset).toHaveBeenCalledWith(request);
+  });
+
   it('fails safely in browser mode without invoking the browser File API', async () => {
     const result = await desktopBridge.selectAndStageSources({
       selectionMode: 'single',
@@ -159,6 +182,13 @@ describe('Desktop Bridge & Runtime Detection', () => {
     expect(await desktopBridge.getSourceStorageCapabilities()).toMatchObject({
       available: false,
       maximumFileCount: 0,
+    });
+    await expect(desktopBridge.readManagedTextAsset({
+      relativePath: `assets/aa/${'a'.repeat(64)}.txt`,
+      expectedContentHash: 'a'.repeat(64),
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'DESKTOP_CAPABILITY_UNAVAILABLE' },
     });
   });
 });

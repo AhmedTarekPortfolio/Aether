@@ -18,6 +18,10 @@ const SAFE_MESSAGES: Record<SourceStorageErrorCode, string> = {
   STAGING_HASH_MISMATCH: 'The staged file failed integrity verification.',
   ASSET_PROMOTION_FAILED: 'The staged file could not be finalised.',
   ASSET_PATH_CONFLICT: 'A conflicting managed asset already exists.',
+  MANAGED_ASSET_NOT_FOUND: 'The managed text asset is no longer available.',
+  MANAGED_ASSET_IDENTITY_MISMATCH: 'The managed text asset failed identity verification.',
+  INVALID_TEXT_ENCODING: 'The managed text asset is not valid UTF-8.',
+  INVALID_TEXT_CONTENT: 'The managed text asset contains unsupported binary content.',
   OPERATION_CANCELLED: 'The source-storage operation was cancelled.',
   SOURCE_STORAGE_UNAVAILABLE: 'Managed source storage could not be initialised.',
 };

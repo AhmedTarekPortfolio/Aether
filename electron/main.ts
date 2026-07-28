@@ -4,10 +4,14 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { registerAllIPCHandlers } from './ipc/register-ipc-handlers.js';
 import { setupNavigationPolicy } from './security/navigation-policy.js';
+import { resolveUserDataOverride } from './security/user-data-override.js';
 import { initializeSourceStorage } from './services/sources/source-storage-provider.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const userDataOverride = resolveUserDataOverride(process.argv);
+if (userDataOverride) app.setPath('userData', userDataOverride);
 
 let mainWindow: BrowserWindow | null = null;
 

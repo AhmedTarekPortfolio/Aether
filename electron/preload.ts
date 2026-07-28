@@ -19,6 +19,8 @@ import {
 import type {
   AssetFinalisationRequest,
   AssetFinalisationResult,
+  ReadManagedTextAssetRequest,
+  ReadManagedTextAssetResult,
   SourceCancellationResult,
   SourceFileSelectionRequest,
   SourceFilesystemReconciliationReport,
@@ -98,6 +100,9 @@ const aetherDesktopAPI: AetherDesktopAPI = {
     },
     finalise(request: AssetFinalisationRequest): Promise<AssetFinalisationResult> {
       return ipcRenderer.invoke(IPCChannel.SOURCES_FINALISE, request);
+    },
+    readTextAsset(request: ReadManagedTextAssetRequest): Promise<ReadManagedTextAssetResult> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_READ_TEXT_ASSET, request);
     },
     cancel(stagingToken: string): Promise<SourceCancellationResult> {
       return ipcRenderer.invoke(IPCChannel.SOURCES_CANCEL, stagingToken);

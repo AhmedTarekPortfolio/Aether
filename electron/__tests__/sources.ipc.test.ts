@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   service: {
     selectAndStage: vi.fn(),
     finalise: vi.fn(),
+    readTextAsset: vi.fn(),
     cancel: vi.fn(),
     reconcile: vi.fn(),
     getCapabilities: vi.fn(),
@@ -33,14 +34,40 @@ describe('source-storage IPC handlers', () => {
     registerSourcesIPCHandlers({} as never);
   });
 
-  it('registers exactly the five narrow source channels', () => {
+  it('registers exactly the six narrow source channels', () => {
     expect([...mocks.handlers.keys()].sort()).toEqual([
       IPCChannel.SOURCES_CANCEL,
       IPCChannel.SOURCES_FINALISE,
       IPCChannel.SOURCES_GET_CAPABILITIES,
+      IPCChannel.SOURCES_READ_TEXT_ASSET,
       IPCChannel.SOURCES_RECONCILE,
       IPCChannel.SOURCES_SELECT_AND_STAGE,
     ].sort());
+  });
+
+  it('validates managed text reads before calling the service', async () => {
+    const handler = mocks.handlers.get(IPCChannel.SOURCES_READ_TEXT_ASSET)!;
+    await expect(handler({}, {
+      relativePath: 'C:\\private.txt',
+      expectedContentHash: 'a'.repeat(64),
+    })).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(mocks.service.readTextAsset).not.toHaveBeenCalled();
+
+    const request = {
+      relativePath: `assets/aa/${'a'.repeat(64)}.txt`,
+      expectedContentHash: 'a'.repeat(64),
+    };
+    mocks.service.readTextAsset.mockResolvedValue({
+      text: 'safe',
+      contentHash: request.expectedContentHash,
+      mimeType: 'text/plain',
+      extension: 'txt',
+      byteSize: 4,
+    });
+    await expect(handler({}, request)).resolves.toMatchObject({
+      ok: true,
+      value: { text: 'safe', byteSize: 4 },
+    });
   });
 
   it('rejects invalid selection before the native dialog service is reached', async () => {

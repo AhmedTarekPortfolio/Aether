@@ -9,6 +9,8 @@ import {
   SOURCE_FILE_SIZE_LIMITS,
   SOURCE_MAXIMUM_FILE_COUNT,
   type AssetFinalisationReceipt,
+  type ReadManagedTextAssetReceipt,
+  type ReadManagedTextAssetRequest,
   type SourceCancellationResult,
   type SourceFileKind,
   type SourceFileSelectionRequest,
@@ -147,6 +149,97 @@ export class SourceStorageService {
       stagingReceiptLifetimeMs: this.receiptLifetimeMs,
       physicalAssetScope: 'shared-content-addressed',
     };
+  }
+
+  public async readTextAsset(
+    request: ReadManagedTextAssetRequest,
+  ): Promise<ReadManagedTextAssetReceipt> {
+    const paths = this.requirePaths();
+    const extension = path.posix.extname(request.relativePath).slice(1).toLowerCase();
+    const textType = extension === 'txt'
+      ? { extension: 'txt' as const, mimeType: 'text/plain' as const, kind: 'text' as const }
+      : extension === 'md' || extension === 'markdown'
+        ? {
+            extension: extension as 'md' | 'markdown',
+            mimeType: 'text/markdown' as const,
+            kind: 'markdown' as const,
+          }
+        : null;
+    if (
+      !textType
+      || assetRelativePath(request.expectedContentHash, extension) !== request.relativePath
+    ) {
+      throw new SourceStorageError('INVALID_REQUEST');
+    }
+
+    const pathname = resolveManagedRelativePath(paths, request.relativePath, 'assets');
+    let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+    try {
+      const [realAssetRoot, realPath, linkStat] = await Promise.all([
+        fs.realpath(paths.assets),
+        fs.realpath(pathname),
+        fs.lstat(pathname),
+      ]);
+      const relativeRealPath = path.relative(realAssetRoot, realPath);
+      if (
+        !relativeRealPath
+        || relativeRealPath === '..'
+        || relativeRealPath.startsWith(`..${path.sep}`)
+        || path.isAbsolute(relativeRealPath)
+        || linkStat.isSymbolicLink()
+        || !linkStat.isFile()
+      ) {
+        throw new SourceStorageError('INVALID_REQUEST');
+      }
+
+      handle = await fs.open(pathname, 'r');
+      const before = await handle.stat();
+      if (!before.isFile()) throw new SourceStorageError('INVALID_REQUEST');
+      if (before.size > this.sizeLimits[textType.kind]) {
+        throw new SourceStorageError('FILE_TOO_LARGE');
+      }
+      const bytes = await handle.readFile();
+      const after = await handle.stat();
+      if (before.size !== after.size || bytes.byteLength !== before.size) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+      const contentHash = crypto.createHash('sha256').update(bytes).digest('hex');
+      if (contentHash !== request.expectedContentHash) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+
+      let suspiciousControls = 0;
+      for (const byte of bytes) {
+        if (byte === 0) throw new SourceStorageError('INVALID_TEXT_CONTENT');
+        if (byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
+          suspiciousControls += 1;
+        }
+      }
+      if (bytes.length > 0 && suspiciousControls / bytes.length > 0.1) {
+        throw new SourceStorageError('INVALID_TEXT_CONTENT');
+      }
+
+      let text: string;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch (error) {
+        throw new SourceStorageError('INVALID_TEXT_ENCODING', { cause: error });
+      }
+      return {
+        text,
+        contentHash,
+        mimeType: textType.mimeType,
+        extension: textType.extension,
+        byteSize: bytes.byteLength,
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new SourceStorageError('MANAGED_ASSET_NOT_FOUND', { cause: error });
+      }
+      throw error;
+    } finally {
+      await handle?.close().catch(() => {});
+    }
   }
 
   private requirePaths(): ManagedSourcePaths {

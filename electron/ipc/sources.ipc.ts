@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import {
   validateAssetFinalisationRequest,
+  validateReadManagedTextAssetRequest,
   validateSourceFileSelectionRequest,
   validateStagingToken,
 } from '../security/validate-ipc-input.js';
@@ -13,6 +14,7 @@ import { IPCChannel } from '../types/ipc-contracts.js';
 import type {
   AssetFinalisationRequest,
   AssetFinalisationResult,
+  ReadManagedTextAssetResult,
   SourceFileSelectionRequest,
   SourceStageOperationResult,
 } from '../types/source-storage.js';
@@ -31,6 +33,23 @@ export function registerSourcesIPCHandlers(window: BrowserWindow): void {
           input as SourceFileSelectionRequest,
         );
         return { ok: true, value };
+      } catch (error) {
+        return sourceOperationFailure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPCChannel.SOURCES_READ_TEXT_ASSET,
+    async (_event, input: unknown): Promise<ReadManagedTextAssetResult> => {
+      if (!validateReadManagedTextAssetRequest(input)) {
+        return sourceOperationFailure(new SourceStorageError('INVALID_REQUEST'));
+      }
+      try {
+        return {
+          ok: true,
+          value: await getSourceStorageService().readTextAsset(input),
+        };
       } catch (error) {
         return sourceOperationFailure(error);
       }

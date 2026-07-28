@@ -2,6 +2,7 @@ export type ActiveTab =
   | 'home' 
   | 'plan' 
   | 'workspace' 
+  | 'sources'
   | 'focus' 
   | 'assistant' 
   | 'insights' 

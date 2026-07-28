@@ -130,6 +130,7 @@ export interface AetherDesktopAPI {
   sources: {
     selectAndStage(request: SourceFileSelectionRequest): Promise<SourceStageOperationResult>;
     finalise(request: AssetFinalisationRequest): Promise<AssetFinalisationResult>;
+    readTextAsset(request: ReadManagedTextAssetRequest): Promise<ReadManagedTextAssetResult>;
     cancel(stagingToken: string): Promise<SourceCancellationResult>;
     reconcile(): Promise<SourceFilesystemReconciliationReport>;
     getCapabilities(): Promise<SourceStorageCapabilities>;
@@ -148,6 +149,8 @@ export interface AetherDesktopAPI {
 import type {
   AssetFinalisationRequest,
   AssetFinalisationResult,
+  ReadManagedTextAssetRequest,
+  ReadManagedTextAssetResult,
   SourceCancellationResult,
   SourceFileSelectionRequest,
   SourceFilesystemReconciliationReport,

@@ -7,6 +7,7 @@ import {
 import { CredentialStatus } from '../services/ai/aetherTransport';
 import type {
   AssetFinalisationResult,
+  ReadManagedTextAssetResult,
   SourceStageOperationResult,
 } from '../../electron/types/source-storage';
 
@@ -29,6 +30,16 @@ export const browserFallback = {
   },
 
   async finaliseSourceAsset(): Promise<AssetFinalisationResult> {
+    return {
+      ok: false,
+      error: {
+        code: 'DESKTOP_CAPABILITY_UNAVAILABLE',
+        message: 'Managed source storage is available only in the desktop application.',
+      },
+    };
+  },
+
+  async readManagedTextAsset(): Promise<ReadManagedTextAssetResult> {
     return {
       ok: false,
       error: {

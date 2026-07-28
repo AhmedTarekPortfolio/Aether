@@ -6,6 +6,7 @@ import { IPCChannel } from '../types/ipc-contracts';
 const sourceMethods = [
   'selectAndStage',
   'finalise',
+  'readTextAsset',
   'cancel',
   'reconcile',
   'getCapabilities',
@@ -14,6 +15,7 @@ const sourceMethods = [
 const sourceChannels = [
   IPCChannel.SOURCES_SELECT_AND_STAGE,
   IPCChannel.SOURCES_FINALISE,
+  IPCChannel.SOURCES_READ_TEXT_ASSET,
   IPCChannel.SOURCES_CANCEL,
   IPCChannel.SOURCES_RECONCILE,
   IPCChannel.SOURCES_GET_CAPABILITIES,

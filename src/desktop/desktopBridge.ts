@@ -10,6 +10,7 @@ import {
 import { CredentialStatus, AITransportChatRequest } from '../services/ai/aetherTransport';
 import type {
   AssetFinalisationRequest,
+  ReadManagedTextAssetRequest,
   SourceFileSelectionRequest,
 } from '../../electron/types/source-storage';
 
@@ -145,6 +146,13 @@ export const desktopBridge = {
       return window.aetherDesktop.sources.finalise(request);
     }
     return browserFallback.finaliseSourceAsset();
+  },
+
+  async readManagedTextAsset(request: ReadManagedTextAssetRequest) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.readTextAsset(request);
+    }
+    return browserFallback.readManagedTextAsset();
   },
 
   async cancelSourceStaging(stagingToken: string) {

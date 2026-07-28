@@ -58,6 +58,19 @@ function assertNoAbsolutePaths(value: unknown, forbiddenRoot: string): void {
 }
 
 describe('managed source storage service', () => {
+  async function writeManagedAsset(
+    userData: string,
+    extension: 'txt' | 'md' | 'markdown' | 'pdf',
+    content: Buffer,
+  ) {
+    const contentHash = crypto.createHash('sha256').update(content).digest('hex');
+    const relativePath = `assets/${contentHash.slice(0, 2)}/${contentHash}.${extension}`;
+    const pathname = path.join(userData, 'sources', ...relativePath.split('/'));
+    await fs.mkdir(path.dirname(pathname), { recursive: true });
+    await fs.writeFile(pathname, content);
+    return { contentHash, relativePath };
+  }
+
   it('handles native-dialog cancellation without creating a receipt', async () => {
     const userData = await temporaryDirectory();
     const service = createService(userData);
@@ -117,6 +130,104 @@ describe('managed source storage service', () => {
       ...multiple,
       maximumFileCount: 1,
     })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  it.each([
+    ['txt' as const, 'text/plain', Buffer.from('\ufeffArabic عربي\r\nEnglish 😀', 'utf8')],
+    ['md' as const, 'text/markdown', Buffer.from('# Heading\n\n<script>alert(1)</script>', 'utf8')],
+    ['markdown' as const, 'text/markdown', Buffer.from('## Safe markdown', 'utf8')],
+  ])('reads identity-checked managed %s assets without exposing paths', async (
+    extension,
+    mimeType,
+    content,
+  ) => {
+    const userData = await temporaryDirectory();
+    const service = createService(userData);
+    await service.initialize();
+    const identity = await writeManagedAsset(userData, extension, content);
+
+    const receipt = await service.readTextAsset({
+      relativePath: identity.relativePath,
+      expectedContentHash: identity.contentHash,
+    });
+    expect(receipt).toEqual({
+      text: new TextDecoder('utf-8', { fatal: true }).decode(content),
+      contentHash: identity.contentHash,
+      mimeType,
+      extension,
+      byteSize: content.byteLength,
+    });
+    assertNoAbsolutePaths(receipt, userData);
+  });
+
+  it('rejects arbitrary paths, non-text assets, and mismatched identity claims', async () => {
+    const userData = await temporaryDirectory();
+    const service = createService(userData);
+    await service.initialize();
+    const text = await writeManagedAsset(userData, 'txt', Buffer.from('identity'));
+    const pdf = await writeManagedAsset(userData, 'pdf', Buffer.from('%PDF-1.7'));
+
+    await expect(service.readTextAsset({
+      relativePath: 'C:\\private.txt',
+      expectedContentHash: text.contentHash,
+    })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(service.readTextAsset({
+      relativePath: '../private.txt',
+      expectedContentHash: text.contentHash,
+    })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(service.readTextAsset({
+      relativePath: pdf.relativePath,
+      expectedContentHash: pdf.contentHash,
+    })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(service.readTextAsset({
+      relativePath: text.relativePath,
+      expectedContentHash: 'b'.repeat(64),
+    })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  it('rejects invalid UTF-8 and binary managed text content', async () => {
+    const userData = await temporaryDirectory();
+    const service = createService(userData);
+    await service.initialize();
+    const invalidUtf8 = await writeManagedAsset(
+      userData,
+      'txt',
+      Buffer.from([0xc3, 0x28]),
+    );
+    const binary = await writeManagedAsset(
+      userData,
+      'md',
+      Buffer.from([0x61, 0x00, 0x62]),
+    );
+
+    await expect(service.readTextAsset({
+      relativePath: invalidUtf8.relativePath,
+      expectedContentHash: invalidUtf8.contentHash,
+    })).rejects.toMatchObject({ code: 'INVALID_TEXT_ENCODING' });
+    await expect(service.readTextAsset({
+      relativePath: binary.relativePath,
+      expectedContentHash: binary.contentHash,
+    })).rejects.toMatchObject({ code: 'INVALID_TEXT_CONTENT' });
+  });
+
+  it('enforces the configured text limit and detects changed managed bytes', async () => {
+    const userData = await temporaryDirectory();
+    const service = createService(userData, [], { sizeLimits: { text: 3 } });
+    await service.initialize();
+    const oversized = await writeManagedAsset(userData, 'txt', Buffer.from('four'));
+    await expect(service.readTextAsset({
+      relativePath: oversized.relativePath,
+      expectedContentHash: oversized.contentHash,
+    })).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+
+    const original = Buffer.from('one');
+    const identity = await writeManagedAsset(userData, 'txt', original);
+    const pathname = path.join(userData, 'sources', ...identity.relativePath.split('/'));
+    await fs.writeFile(pathname, 'two');
+    await expect(service.readTextAsset({
+      relativePath: identity.relativePath,
+      expectedContentHash: identity.contentHash,
+    })).rejects.toMatchObject({ code: 'MANAGED_ASSET_IDENTITY_MISMATCH' });
   });
 
   it('preserves Arabic filenames and never places display names in managed paths', async () => {
