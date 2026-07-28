@@ -55,7 +55,12 @@ function progress(
   callback: ImportTextFileOptions['onProgress'],
   value: SourceImportProgress,
 ): void {
-  callback?.(value);
+  try {
+    callback?.(value);
+  } catch {
+    // Progress observers are non-authoritative UI notifications. A consumer
+    // error must never alter or roll back an import's durable state.
+  }
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

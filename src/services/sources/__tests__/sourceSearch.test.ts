@@ -98,6 +98,18 @@ describe('local imported-source search', () => {
     expect(results[0].source.id).not.toBe(otherSubjectId);
   });
 
+  it('bounds the number of candidate chunks examined in stable source order', async () => {
+    const { database, secondId } = await databaseWithSources();
+    const results = await searchImportedSources({
+      userId: 'user-a',
+      subjectId: 'subject-a',
+      query: 'velocity',
+      maximumCandidateChunks: 1,
+    }, database);
+    expect(results).toHaveLength(1);
+    expect(results[0].source.id).toBe(secondId);
+  });
+
   it('excludes inactive sources and non-ready versions', async () => {
     const { database, firstId, secondId } = await databaseWithSources();
     await database.study_sources.update(firstId, { status: 'archived' });

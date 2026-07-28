@@ -7,6 +7,7 @@ import type {
 } from '../../types';
 
 export const MAX_SOURCE_SEARCH_RESULTS = 25;
+export const MAX_SOURCE_SEARCH_CANDIDATE_CHUNKS = 5_000;
 
 export interface SourceSearchRequest {
   userId: string;
@@ -14,6 +15,7 @@ export interface SourceSearchRequest {
   query: string;
   sourceIds?: string[];
   maximumResults?: number;
+  maximumCandidateChunks?: number;
 }
 
 export interface SourceSearchResult {
@@ -91,6 +93,10 @@ export async function searchImportedSources(
     MAX_SOURCE_SEARCH_RESULTS,
     Math.max(1, request.maximumResults ?? 10),
   );
+  const maximumCandidateChunks = Math.min(
+    MAX_SOURCE_SEARCH_CANDIDATE_CHUNKS,
+    Math.max(1, request.maximumCandidateChunks ?? MAX_SOURCE_SEARCH_CANDIDATE_CHUNKS),
+  );
   const subjectSourceIds = new Set(
     (await database.source_associations
       .where('[targetType+targetId]')
@@ -108,16 +114,24 @@ export async function searchImportedSources(
       && (!requestedIds || requestedIds.has(source.id))
       && (source.sourceType === 'txt'
         || source.sourceType === 'markdown'
-        || source.sourceType === 'pasted-text'));
+        || source.sourceType === 'pasted-text'))
+    .sort((left, right) =>
+      left.displayName.localeCompare(right.displayName)
+      || left.id.localeCompare(right.id));
 
   const results: SourceSearchResult[] = [];
+  let candidateCount = 0;
   for (const source of sources) {
+    if (candidateCount >= maximumCandidateChunks) break;
     const version = await database.source_versions.get(source.currentVersionId!);
     if (!version || version.status !== 'ready' || version.userId !== request.userId) continue;
-    const chunks = await database.source_chunks
+    const chunks = (await database.source_chunks
       .where('sourceVersionId')
       .equals(version.id)
-      .sortBy('ordinal');
+      .limit(maximumCandidateChunks - candidateCount)
+      .toArray())
+      .sort((left, right) => left.ordinal - right.ordinal || left.id.localeCompare(right.id));
+    candidateCount += chunks.length;
     for (const chunk of chunks) {
       const scored = scoreChunk(chunk.text, trimmed.toLocaleLowerCase(), terms);
       if (scored.score <= 0) continue;

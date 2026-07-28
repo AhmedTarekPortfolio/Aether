@@ -39,7 +39,10 @@ function beforeLowSurrogate(text: string, index: number): number {
 }
 
 function preferredBoundary(text: string, start: number, hardEnd: number, minimum: number): number {
-  const paragraph = text.lastIndexOf('\n\n', hardEnd - 1);
+  // The second newline must also remain inside the hard maximum. Searching from
+  // hardEnd - 1 can match a delimiter that straddles hardEnd and create a
+  // maximumCharacters + 1 chunk.
+  const paragraph = text.lastIndexOf('\n\n', Math.max(start, hardEnd - 2));
   if (paragraph >= minimum) return paragraph + 2;
 
   for (let index = hardEnd - 1; index >= minimum; index -= 1) {

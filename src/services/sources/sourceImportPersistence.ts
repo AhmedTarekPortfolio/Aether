@@ -399,7 +399,8 @@ export async function discardIncompleteSource(
     ],
     async () => {
       const source = await database.study_sources.get(sourceId);
-      if (!source || source.userId !== userId || source.currentVersionId) {
+      if (!source) return;
+      if (source.userId !== userId || source.currentVersionId) {
         throw new SourceImportError('INVALID_REQUEST');
       }
       const versions = await database.source_versions.where('sourceId').equals(sourceId).toArray();

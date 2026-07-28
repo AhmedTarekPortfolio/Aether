@@ -168,6 +168,35 @@ describe('file source import orchestration', () => {
     },
   );
 
+  it('does not let progress-observer failures corrupt a committed ready import', async () => {
+    const database = await testDatabase();
+    const staging = receipt();
+    let completedObserved = false;
+
+    const result = await importTextFile(defaultContext, {
+      database,
+      runtime: runtimeFor(staging),
+      now: () => now,
+      onProgress: ({ stage }) => {
+        if (stage === 'completed') {
+          completedObserved = true;
+          throw new Error('UI observer failed');
+        }
+      },
+    });
+
+    expect(completedObserved).toBe(true);
+    expect(await database.study_sources.get(result.sourceId)).toMatchObject({
+      currentVersionId: result.versionId,
+    });
+    expect(await database.source_versions.get(result.versionId)).toMatchObject({
+      status: 'ready',
+      errorCode: null,
+    });
+    expect(await database.source_jobs.where('sourceId').equals(result.sourceId).first())
+      .toMatchObject({ status: 'completed', progress: 100 });
+  });
+
   it('reuses one per-user asset while creating separate visible sources', async () => {
     const database = await testDatabase();
     const staging = receipt();
@@ -418,6 +447,8 @@ describe('pasted text and import recovery', () => {
     }, { ...staging, stagingToken: 'd'.repeat(64) });
     await database.source_versions.update(second.versionId, { status: 'failed' });
     await discardIncompleteSource(second.sourceId, 'user-a', { database });
+    await expect(discardIncompleteSource(second.sourceId, 'user-a', { database }))
+      .resolves.toBeUndefined();
     expect(await database.study_sources.get(second.sourceId)).toBeUndefined();
     expect(await database.source_assets.count()).toBe(1);
   });

@@ -49,6 +49,15 @@ describe('deterministic local source chunking', () => {
     }
   });
 
+  it('does not let a paragraph delimiter straddle the hard maximum', () => {
+    const text = `${'a'.repeat(3_999)}\n\n${'b'.repeat(500)}`;
+    const chunks = deriveTextChunks(text);
+    expect(chunks[0].charEnd).toBe(4_000);
+    expect(chunks.every((chunk) =>
+      chunk.charEnd - chunk.charStart <= DEFAULT_SOURCE_CHUNKING_CONFIG.maximumCharacters))
+      .toBe(true);
+  });
+
   it('never splits an emoji surrogate pair at a chunk boundary', () => {
     const text = `${'x'.repeat(63)}😀${'y'.repeat(100)}`;
     const chunks = deriveTextChunks(text, {
