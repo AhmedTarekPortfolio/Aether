@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { registerAllIPCHandlers } from './ipc/register-ipc-handlers.js';
 import { setupNavigationPolicy } from './security/navigation-policy.js';
+import { initializeSourceStorage } from './services/sources/source-storage-provider.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -119,7 +120,12 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    await initializeSourceStorage();
+  } catch {
+    console.error('[SourceStorage] Initialisation failed');
+  }
   createWindow();
 
   app.on('activate', () => {

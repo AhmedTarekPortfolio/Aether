@@ -123,4 +123,42 @@ describe('Desktop Bridge & Runtime Detection', () => {
     expect(cancel).toHaveBeenCalledWith('req_cancel');
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
+
+  it('routes source storage only through the narrow desktop namespace', async () => {
+    const selectAndStage = vi.fn().mockResolvedValue({
+      ok: true,
+      value: { cancelled: true, receipts: [] },
+    });
+    (window as any).aetherDesktop = { sources: { selectAndStage } };
+    const request = {
+      selectionMode: 'single' as const,
+      allowedKinds: ['text'] as ['text'],
+      maximumFileCount: 1,
+    };
+
+    await expect(desktopBridge.selectAndStageSources(request)).resolves.toEqual({
+      ok: true,
+      value: { cancelled: true, receipts: [] },
+    });
+    expect(selectAndStage).toHaveBeenCalledWith(request);
+  });
+
+  it('fails safely in browser mode without invoking the browser File API', async () => {
+    const result = await desktopBridge.selectAndStageSources({
+      selectionMode: 'single',
+      allowedKinds: ['any-supported'],
+      maximumFileCount: 1,
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'DESKTOP_CAPABILITY_UNAVAILABLE',
+        message: 'Managed source storage is available only in the desktop application.',
+      },
+    });
+    expect(await desktopBridge.getSourceStorageCapabilities()).toMatchObject({
+      available: false,
+      maximumFileCount: 0,
+    });
+  });
 });

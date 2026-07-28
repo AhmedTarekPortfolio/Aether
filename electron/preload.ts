@@ -16,6 +16,15 @@ import {
   DesktopAppInfo,
   AetherDesktopAPI,
 } from './types/desktop-api.js';
+import type {
+  AssetFinalisationRequest,
+  AssetFinalisationResult,
+  SourceCancellationResult,
+  SourceFileSelectionRequest,
+  SourceFilesystemReconciliationReport,
+  SourceStageOperationResult,
+  SourceStorageCapabilities,
+} from './types/source-storage.js';
 
 const aetherDesktopAPI: AetherDesktopAPI = {
   ai: {
@@ -81,6 +90,23 @@ const aetherDesktopAPI: AetherDesktopAPI = {
     },
     saveFile(options: DesktopFileSaveOptions): Promise<DesktopFileSaveResult> {
       return ipcRenderer.invoke(IPCChannel.FILES_SAVE, options);
+    },
+  },
+  sources: {
+    selectAndStage(request: SourceFileSelectionRequest): Promise<SourceStageOperationResult> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_SELECT_AND_STAGE, request);
+    },
+    finalise(request: AssetFinalisationRequest): Promise<AssetFinalisationResult> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_FINALISE, request);
+    },
+    cancel(stagingToken: string): Promise<SourceCancellationResult> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_CANCEL, stagingToken);
+    },
+    reconcile(): Promise<SourceFilesystemReconciliationReport> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_RECONCILE);
+    },
+    getCapabilities(): Promise<SourceStorageCapabilities> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_GET_CAPABILITIES);
     },
   },
   app: {

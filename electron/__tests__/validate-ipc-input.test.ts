@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { validateAIRequest, validateCredentialInput, validateString } from '../security/validate-ipc-input.js';
+import {
+  validateAIRequest,
+  validateAssetFinalisationRequest,
+  validateCredentialInput,
+  validateSourceFileSelectionRequest,
+  validateStagingToken,
+  validateString,
+} from '../security/validate-ipc-input.js';
 
 describe('Electron IPC Input Validation', () => {
   it('validates a correct AI request input object', () => {
@@ -58,5 +65,51 @@ describe('Electron IPC Input Validation', () => {
   it('validates non-empty string helper', () => {
     expect(validateString('hello', 'testStr').valid).toBe(true);
     expect(validateString('', 'testStr').valid).toBe(false);
+  });
+
+  it('strictly validates bounded source selection requests', () => {
+    expect(validateSourceFileSelectionRequest({
+      selectionMode: 'multiple',
+      allowedKinds: ['text', 'pdf'],
+      maximumFileCount: 2,
+    }).valid).toBe(true);
+    expect(validateSourceFileSelectionRequest({
+      selectionMode: 'single',
+      allowedKinds: ['any-supported'],
+      maximumFileCount: 1,
+    }).valid).toBe(true);
+
+    for (const input of [
+      null,
+      {},
+      { selectionMode: 'single', allowedKinds: ['text'], maximumFileCount: 0 },
+      { selectionMode: 'single', allowedKinds: ['text'], maximumFileCount: 2 },
+      { selectionMode: 'multiple', allowedKinds: ['text'], maximumFileCount: 21 },
+      { selectionMode: 'multiple', allowedKinds: ['exe'], maximumFileCount: 1 },
+      { selectionMode: 'multiple', allowedKinds: [], maximumFileCount: 1 },
+      { selectionMode: 'multiple', allowedKinds: ['any-supported', 'pdf'], maximumFileCount: 1 },
+      { selectionMode: 'multiple', allowedKinds: ['pdf', 'pdf'], maximumFileCount: 1 },
+      {
+        selectionMode: 'multiple',
+        allowedKinds: ['pdf'],
+        maximumFileCount: 1,
+        absolutePath: 'C:\\private.pdf',
+      },
+    ]) {
+      expect(validateSourceFileSelectionRequest(input).valid).toBe(false);
+    }
+  });
+
+  it('accepts only exact opaque tokens and strict finalisation objects', () => {
+    const token = 'a'.repeat(64);
+    expect(validateStagingToken(token).valid).toBe(true);
+    expect(validateAssetFinalisationRequest({ stagingToken: token }).valid).toBe(true);
+    for (const invalid of ['', 'a'.repeat(129), '../token', 'A'.repeat(64), 42]) {
+      expect(validateStagingToken(invalid).valid).toBe(false);
+    }
+    expect(validateAssetFinalisationRequest({
+      stagingToken: token,
+      contentHash: 'b'.repeat(64),
+    }).valid).toBe(false);
   });
 });

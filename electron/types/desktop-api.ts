@@ -127,6 +127,13 @@ export interface AetherDesktopAPI {
     openFile(options?: DesktopFileOpenOptions): Promise<DesktopFileOpenResult>;
     saveFile(options: DesktopFileSaveOptions): Promise<DesktopFileSaveResult>;
   };
+  sources: {
+    selectAndStage(request: SourceFileSelectionRequest): Promise<SourceStageOperationResult>;
+    finalise(request: AssetFinalisationRequest): Promise<AssetFinalisationResult>;
+    cancel(stagingToken: string): Promise<SourceCancellationResult>;
+    reconcile(): Promise<SourceFilesystemReconciliationReport>;
+    getCapabilities(): Promise<SourceStorageCapabilities>;
+  };
   app: {
     getInfo(): Promise<DesktopAppInfo>;
     getVersion(): Promise<string>;
@@ -138,3 +145,12 @@ export interface AetherDesktopAPI {
     close(): Promise<void>;
   };
 }
+import type {
+  AssetFinalisationRequest,
+  AssetFinalisationResult,
+  SourceCancellationResult,
+  SourceFileSelectionRequest,
+  SourceFilesystemReconciliationReport,
+  SourceStageOperationResult,
+  SourceStorageCapabilities,
+} from './source-storage.js';

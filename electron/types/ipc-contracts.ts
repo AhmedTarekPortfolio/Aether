@@ -14,6 +14,12 @@ export enum IPCChannel {
   FILES_OPEN = 'aether:files:open',
   FILES_SAVE = 'aether:files:save',
 
+  SOURCES_SELECT_AND_STAGE = 'aether:sources:select-and-stage',
+  SOURCES_FINALISE = 'aether:sources:finalise',
+  SOURCES_CANCEL = 'aether:sources:cancel',
+  SOURCES_RECONCILE = 'aether:sources:reconcile',
+  SOURCES_GET_CAPABILITIES = 'aether:sources:get-capabilities',
+
   APP_GET_INFO = 'aether:app:get-info',
   APP_GET_VERSION = 'aether:app:get-version',
   APP_GET_PLATFORM = 'aether:app:get-platform',

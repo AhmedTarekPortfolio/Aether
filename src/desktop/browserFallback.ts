@@ -5,6 +5,10 @@ import {
   AIStreamHandlers,
 } from '../services/ai/types';
 import { CredentialStatus } from '../services/ai/aetherTransport';
+import type {
+  AssetFinalisationResult,
+  SourceStageOperationResult,
+} from '../../electron/types/source-storage';
 
 const getAiBase = () => {
   if (typeof window !== 'undefined' && window.location?.origin && window.location.origin.startsWith('http')) {
@@ -14,6 +18,26 @@ const getAiBase = () => {
 };
 
 export const browserFallback = {
+  async selectAndStageSources(): Promise<SourceStageOperationResult> {
+    return {
+      ok: false,
+      error: {
+        code: 'DESKTOP_CAPABILITY_UNAVAILABLE',
+        message: 'Managed source storage is available only in the desktop application.',
+      },
+    };
+  },
+
+  async finaliseSourceAsset(): Promise<AssetFinalisationResult> {
+    return {
+      ok: false,
+      error: {
+        code: 'DESKTOP_CAPABILITY_UNAVAILABLE',
+        message: 'Managed source storage is available only in the desktop application.',
+      },
+    };
+  },
+
   async send(request: any, signal?: AbortSignal): Promise<NormalizedAIResponse> {
     const res = await fetch(`${getAiBase()}/chat`, {
       method: 'POST',

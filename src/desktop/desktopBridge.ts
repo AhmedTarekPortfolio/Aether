@@ -8,6 +8,10 @@ import {
   AIStreamHandlers,
 } from '../services/ai/types';
 import { CredentialStatus, AITransportChatRequest } from '../services/ai/aetherTransport';
+import type {
+  AssetFinalisationRequest,
+  SourceFileSelectionRequest,
+} from '../../electron/types/source-storage';
 
 export const desktopBridge = {
   async send(request: AITransportChatRequest, signal?: AbortSignal): Promise<NormalizedAIResponse> {
@@ -127,5 +131,47 @@ export const desktopBridge = {
       return window.aetherDesktop.files.saveFile(options);
     }
     return { cancelled: true };
+  },
+
+  async selectAndStageSources(request: SourceFileSelectionRequest) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.selectAndStage(request);
+    }
+    return browserFallback.selectAndStageSources();
+  },
+
+  async finaliseSourceAsset(request: AssetFinalisationRequest) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.finalise(request);
+    }
+    return browserFallback.finaliseSourceAsset();
+  },
+
+  async cancelSourceStaging(stagingToken: string) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.cancel(stagingToken);
+    }
+    return { cancelled: false };
+  },
+
+  async reconcileSourceFilesystem() {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.reconcile();
+    }
+    throw new Error('Managed source storage is available only in the desktop application.');
+  },
+
+  async getSourceStorageCapabilities() {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.getCapabilities();
+    }
+    return {
+      available: false,
+      supportedExtensions: [],
+      maximumFileCount: 0,
+      sizeLimits: { text: 0, markdown: 0, pdf: 0, image: 0 },
+      stagingReceiptLifetimeMs: 0,
+      physicalAssetScope: 'shared-content-addressed' as const,
+    };
   },
 };

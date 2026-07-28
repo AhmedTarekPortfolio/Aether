@@ -16,6 +16,12 @@ const IPCChannel = {
   FILES_OPEN: 'aether:files:open',
   FILES_SAVE: 'aether:files:save',
 
+  SOURCES_SELECT_AND_STAGE: 'aether:sources:select-and-stage',
+  SOURCES_FINALISE: 'aether:sources:finalise',
+  SOURCES_CANCEL: 'aether:sources:cancel',
+  SOURCES_RECONCILE: 'aether:sources:reconcile',
+  SOURCES_GET_CAPABILITIES: 'aether:sources:get-capabilities',
+
   APP_GET_INFO: 'aether:app:get-info',
   APP_GET_VERSION: 'aether:app:get-version',
   APP_GET_PLATFORM: 'aether:app:get-platform',
@@ -86,6 +92,23 @@ const aetherDesktopAPI = {
     },
     saveFile(options) {
       return ipcRenderer.invoke(IPCChannel.FILES_SAVE, options);
+    },
+  },
+  sources: {
+    selectAndStage(request) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_SELECT_AND_STAGE, request);
+    },
+    finalise(request) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_FINALISE, request);
+    },
+    cancel(stagingToken) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_CANCEL, stagingToken);
+    },
+    reconcile() {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_RECONCILE);
+    },
+    getCapabilities() {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_GET_CAPABILITIES);
     },
   },
   app: {
