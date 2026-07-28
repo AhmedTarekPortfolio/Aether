@@ -12,6 +12,12 @@ dist-win
 release
 *.local
 
+# WP-LOCAL-06 generated evaluation artifacts
+evaluation/wp-local-06/corpus/
+evaluation/wp-local-06/results/
+evaluation/wp-local-06/package-output/
+evaluation/wp-local-06/rendered/
+
 # Agent logs
 .agent/api-models-*
 
