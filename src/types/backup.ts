@@ -17,7 +17,8 @@ import type {
 
 export const AETHER_BACKUP_FORMAT = 'aether-backup' as const;
 export const AETHER_BACKUP_VERSION = 2 as const;
-export const AETHER_DATABASE_SCHEMA_VERSION = 3 as const;
+export const CURRENT_DEXIE_SCHEMA_VERSION = 4 as const;
+export const BACKUP_V2_DATABASE_SCHEMA_VERSION = 3 as const;
 
 export const PERSISTENCE_TABLES = [
   'users',
@@ -78,7 +79,7 @@ export type AetherBackupRecordCounts = {
 export interface AetherBackupV2 {
   format: typeof AETHER_BACKUP_FORMAT;
   version: typeof AETHER_BACKUP_VERSION;
-  schemaVersion: typeof AETHER_DATABASE_SCHEMA_VERSION;
+  schemaVersion: typeof BACKUP_V2_DATABASE_SCHEMA_VERSION;
   applicationVersion: string;
   exportedAt: string;
   recordCounts: AetherBackupRecordCounts;
@@ -534,3 +535,6 @@ export const RESTORE_CANCELLATION_CONTRACT = {
   abortSignalObservedInsideTransaction: false,
   terminalTransactionStates: ['commit', 'rollback'],
 } as const;
+
+/** @deprecated Use BACKUP_V2_DATABASE_SCHEMA_VERSION */
+export const AETHER_DATABASE_SCHEMA_VERSION = BACKUP_V2_DATABASE_SCHEMA_VERSION;

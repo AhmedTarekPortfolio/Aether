@@ -162,7 +162,7 @@ describe('real IndexedDB and Dexie test harness', () => {
     expect(second).toEqual(first);
   });
 
-  it('opens the production version 3 schema under a unique test-only name', async () => {
+  it('opens the production version 4 schema under a unique test-only name', async () => {
     const productionDatabase = new AetherDatabase();
     const productionStores = Object.fromEntries(productionDatabase.tables.map((table) => [
       table.name,
@@ -170,16 +170,16 @@ describe('real IndexedDB and Dexie test harness', () => {
     ]));
 
     expect(productionDatabase.isOpen()).toBe(false);
-    expect(productionDatabase.verno).toBe(3);
-    expect(productionDatabase.tables).toHaveLength(14);
+    expect(productionDatabase.verno).toBe(4);
+    expect(productionDatabase.tables).toHaveLength(22);
 
-    const name = uniqueName('production-schema-v3');
+    const name = uniqueName('production-schema-v4');
     const database = new Dexie(name);
     database.version(productionDatabase.verno).stores(productionStores);
 
     await openTestDatabase(database);
 
-    expect(database.verno).toBe(3);
+    expect(database.verno).toBe(4);
     expect(database.tables.map((table) => table.name).sort()).toEqual(
       productionDatabase.tables.map((table) => table.name).sort(),
     );

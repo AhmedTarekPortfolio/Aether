@@ -255,4 +255,5 @@ export interface UserProfile {
   aiProvider?: 'local' | 'openai' | 'gemini' | 'anthropic';
 }
 
+export * from './sources';
 export * from './backup';

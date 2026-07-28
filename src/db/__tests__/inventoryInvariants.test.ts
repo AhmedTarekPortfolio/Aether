@@ -142,7 +142,21 @@ const TABLES = [
 
 type TableName = (typeof TABLES)[number];
 
-const SCHEMA: Record<TableName, readonly string[]> = {
+const SOURCE_TABLES = [
+  'study_sources',
+  'source_assets',
+  'source_versions',
+  'source_segments',
+  'source_associations',
+  'source_chunks',
+  'source_jobs',
+  'ai_grounding_records',
+] as const;
+
+const ALL_TABLES = [...TABLES, ...SOURCE_TABLES] as const;
+type SchemaTableName = (typeof ALL_TABLES)[number];
+
+const SCHEMA: Record<SchemaTableName, readonly string[]> = {
   users: ['&email'],
   settings: ['&userId'],
   subjects: ['userId', 'name', 'confidenceRating'],
@@ -157,6 +171,49 @@ const SCHEMA: Record<TableName, readonly string[]> = {
   achievement_definitions: ['&key'],
   user_achievements: ['userId', '[userId+achievementId]'],
   notifications: ['userId', 'type', 'createdAt'],
+  study_sources: [
+    'userId',
+    'status',
+    'sourceType',
+    'currentVersionId',
+    '[userId+status]',
+    '[userId+sourceType]',
+  ],
+  source_assets: ['userId', '&[userId+contentHash]'],
+  source_versions: ['userId', 'sourceId', 'assetId', 'status', '&[sourceId+versionNumber]'],
+  source_segments: [
+    'userId',
+    'sourceId',
+    'sourceVersionId',
+    'segmentType',
+    '&[sourceVersionId+ordinal]',
+  ],
+  source_associations: [
+    'userId',
+    'sourceId',
+    '&[sourceId+targetType+targetId]',
+    '[targetType+targetId]',
+  ],
+  source_chunks: [
+    'userId',
+    'sourceVersionId',
+    'segmentId',
+    '&[segmentId+chunkerFingerprint+ordinal]',
+  ],
+  source_jobs: ['userId', 'jobType', 'status', 'sourceId', 'assetId', 'versionId', '[userId+status]'],
+  ai_grounding_records: [
+    'userId',
+    'requestId',
+    'conversationId',
+    'assistantMessageId',
+    'evidenceType',
+    'sourceId',
+    'sourceVersionId',
+    'segmentId',
+    'noteId',
+    '&[requestId+evidenceLabel]',
+    '[conversationId+assistantMessageId]',
+  ],
 };
 
 const API_MODULES = {
@@ -455,10 +512,18 @@ const EXPECTED_DIRECT_DB_FILES = [
   'src/api/aiConversationApi.ts',
   'src/api/flashcardApi.ts',
   'src/api/goalApi.ts',
+  'src/api/groundingRecordApi.ts',
   'src/api/noteApi.ts',
   'src/api/notificationApi.ts',
   'src/api/sessionApi.ts',
   'src/api/settingsApi.ts',
+  'src/api/sourceApi.ts',
+  'src/api/sourceAssetApi.ts',
+  'src/api/sourceAssociationApi.ts',
+  'src/api/sourceChunkApi.ts',
+  'src/api/sourceJobApi.ts',
+  'src/api/sourceSegmentApi.ts',
+  'src/api/sourceVersionApi.ts',
   'src/api/statisticApi.ts',
   'src/api/subjectApi.ts',
   'src/api/taskApi.ts',
@@ -505,13 +570,13 @@ function expectDocumentedMethods(cell: string, methods: readonly string[]): void
 }
 
 describe('WP-01 persistence inventory invariants', () => {
-  it('declares exactly the 14 reviewed Version 3 tables, string primary keys, and indexes', () => {
+  it('declares exactly the 22 reviewed Version 4 tables, string primary keys, and indexes', () => {
     const database = new AetherDatabase();
     expect(database.name).toBe('AetherPhase1DB');
-    expect(database.verno).toBe(3);
-    expect(database.tables.map((table) => table.name).sort()).toEqual([...TABLES].sort());
+    expect(database.verno).toBe(4);
+    expect(database.tables.map((table) => table.name).sort()).toEqual([...ALL_TABLES].sort());
 
-    for (const tableName of TABLES) {
+    for (const tableName of ALL_TABLES) {
       const schema = database.table(tableName).schema;
       expect(schema.primKey.src, `${tableName} primary key`).toBe('id');
       expect(schema.primKey.auto, `${tableName} must use application-supplied IDs`).toBe(false);
@@ -632,7 +697,7 @@ describe('WP-01 persistence inventory invariants', () => {
   });
 
   it('locks direct database access to the reviewed database, API, store, and export files', () => {
-    const tablePattern = TABLES.join('|');
+    const tablePattern = ALL_TABLES.join('|');
     const directFiles = walkProductionFiles('src')
       .filter((file) => {
         const source = read(file);

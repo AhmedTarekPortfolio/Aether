@@ -7,6 +7,7 @@
  * - Version 3: 3NF Normalized Architecture (14 tables: users, settings, subjects, topics,
  *              tasks, notes, flashcards, sessions, goals, ai_conversations, statistics,
  *              achievement_definitions, user_achievements, notifications)
+ * - Version 4: Additive local-first source domain (8 source and grounding tables)
  *
  * Data Access Architecture:
  * Mutations & direct table queries should be accessed through the Repository API Layer (`src/api/*`),
@@ -28,7 +29,15 @@ import {
   Statistic,
   AchievementDefinition,
   UserAchievement,
-  NotificationItem 
+  NotificationItem,
+  StudySource,
+  SourceAsset,
+  SourceVersion,
+  SourceSegment,
+  SourceAssociation,
+  SourceChunk,
+  SourceJob,
+  AIGroundingRecord
 } from '../types';
 
 export const CANONICAL_ACHIEVEMENT_DEFINITIONS: AchievementDefinition[] = [
@@ -53,9 +62,17 @@ export class AetherDatabase extends Dexie {
   achievement_definitions!: Table<AchievementDefinition>;
   user_achievements!: Table<UserAchievement>;
   notifications!: Table<NotificationItem>;
+  study_sources!: Table<StudySource>;
+  source_assets!: Table<SourceAsset>;
+  source_versions!: Table<SourceVersion>;
+  source_segments!: Table<SourceSegment>;
+  source_associations!: Table<SourceAssociation>;
+  source_chunks!: Table<SourceChunk>;
+  source_jobs!: Table<SourceJob>;
+  ai_grounding_records!: Table<AIGroundingRecord>;
 
-  constructor() {
-    super('AetherPhase1DB');
+  constructor(name = 'AetherPhase1DB') {
+    super(name);
 
     // Original Phase 1 Schema (4 tables)
     this.version(1).stores({
@@ -198,6 +215,34 @@ export class AetherDatabase extends Dexie {
       for (const ach of CANONICAL_ACHIEVEMENT_DEFINITIONS) {
         await tx.table('achievement_definitions').add(ach);
       }
+    });
+
+    // Version 4 Migration (Local-First Source Library - 8 new tables)
+    // Additive only: no existing data migration required
+    this.version(4).stores({
+      users: 'id, &email',
+      settings: 'id, &userId',
+      subjects: 'id, userId, name, confidenceRating',
+      topics: 'id, subjectId, title, masteryLevel',
+      tasks: 'id, userId, subjectId, priority, status, dueDate',
+      notes: 'id, userId, subjectId, topicId, title, updatedAt',
+      flashcards: 'id, userId, subjectId, topicId, nextReviewDate',
+      sessions: 'id, userId, subjectId, taskId, completedAt',
+      goals: 'id, userId, subjectId, status',
+      ai_conversations: 'id, userId, subjectId, mode, timestamp',
+      statistics: 'id, userId, [userId+metricKey+periodStart]',
+      achievement_definitions: 'id, &key',
+      user_achievements: 'id, userId, [userId+achievementId]',
+      notifications: 'id, userId, type, createdAt',
+      // New source library tables (Schema Version 4)
+      study_sources: 'id, userId, status, sourceType, currentVersionId, [userId+status], [userId+sourceType]',
+      source_assets: 'id, userId, &[userId+contentHash]',
+      source_versions: 'id, userId, sourceId, assetId, status, &[sourceId+versionNumber]',
+      source_segments: 'id, userId, sourceId, sourceVersionId, segmentType, &[sourceVersionId+ordinal]',
+      source_associations: 'id, userId, sourceId, &[sourceId+targetType+targetId], [targetType+targetId]',
+      source_chunks: 'id, userId, sourceVersionId, segmentId, &[segmentId+chunkerFingerprint+ordinal]',
+      source_jobs: 'id, userId, jobType, status, sourceId, assetId, versionId, [userId+status]',
+      ai_grounding_records: 'id, userId, requestId, conversationId, assistantMessageId, evidenceType, sourceId, sourceVersionId, segmentId, noteId, &[requestId+evidenceLabel], [conversationId+assistantMessageId]',
     });
   }
 }

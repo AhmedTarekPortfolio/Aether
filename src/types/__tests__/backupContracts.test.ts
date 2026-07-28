@@ -4,6 +4,8 @@ import {
   AETHER_BACKUP_FORMAT,
   AETHER_BACKUP_VERSION,
   AETHER_DATABASE_SCHEMA_VERSION,
+  BACKUP_V2_DATABASE_SCHEMA_VERSION,
+  CURRENT_DEXIE_SCHEMA_VERSION,
   AI_EXPLANATION_FIELD_ALLOWLIST,
   AI_PERSISTENCE_OUTCOMES,
   BACKUP_TOP_LEVEL_KEYS,
@@ -117,6 +119,12 @@ const validFixture = {
 } satisfies AetherBackupV2;
 
 describe('WP-02 backup envelope and allowlists', () => {
+  it('keeps Backup V2 compatibility independent from the live Dexie schema', () => {
+    expect(CURRENT_DEXIE_SCHEMA_VERSION).toBe(4);
+    expect(BACKUP_V2_DATABASE_SCHEMA_VERSION).toBe(3);
+    expect(AETHER_DATABASE_SCHEMA_VERSION).toBe(BACKUP_V2_DATABASE_SCHEMA_VERSION);
+  });
+
   it('freezes the exact V2 envelope and all 14 table names', () => {
     expect(Object.keys(validFixture)).toEqual(BACKUP_TOP_LEVEL_KEYS);
     expect(PERSISTENCE_TABLES).toHaveLength(14);

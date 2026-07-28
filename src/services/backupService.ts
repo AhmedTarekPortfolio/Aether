@@ -9,7 +9,7 @@ import { getKnownProviderProfileIds, getProviderProfiles } from './ai/providerPr
 import {
   AETHER_BACKUP_FORMAT,
   AETHER_BACKUP_VERSION,
-  AETHER_DATABASE_SCHEMA_VERSION,
+  BACKUP_V2_DATABASE_SCHEMA_VERSION,
   AI_EXPLANATION_FIELD_ALLOWLIST,
   BACKUP_TOP_LEVEL_KEYS,
   GENERATION_STATUSES,
@@ -584,7 +584,7 @@ export function validateBackupV2(value: unknown): asserts value is AetherBackupV
 
   if (value.format !== AETHER_BACKUP_FORMAT) fail('Backup format is invalid.');
   if (value.version !== AETHER_BACKUP_VERSION) fail('Backup version is invalid.');
-  if (value.schemaVersion !== AETHER_DATABASE_SCHEMA_VERSION) {
+  if (value.schemaVersion !== BACKUP_V2_DATABASE_SCHEMA_VERSION) {
     fail('Backup schema version is invalid.');
   }
   if (typeof value.applicationVersion !== 'string' || value.applicationVersion.trim().length === 0) {
@@ -706,7 +706,7 @@ export function buildBackupV2(
   const backup: AetherBackupV2 = {
     format: AETHER_BACKUP_FORMAT,
     version: AETHER_BACKUP_VERSION,
-    schemaVersion: AETHER_DATABASE_SCHEMA_VERSION,
+    schemaVersion: BACKUP_V2_DATABASE_SCHEMA_VERSION,
     applicationVersion: packageMetadata.version,
     exportedAt,
     recordCounts: calculateBackupRecordCounts(snapshot),
