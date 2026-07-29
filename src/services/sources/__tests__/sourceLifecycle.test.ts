@@ -294,6 +294,53 @@ describe('WP-LOCAL-04 source lifecycle', () => {
     expect(await database.study_sources.get('shared-two')).toBeDefined();
   });
 
+  it('does not let already-purged versions keep a shared asset forever', async () => {
+    const database = await createDatabase();
+    const sharedAsset: SourceAsset = {
+      id: 'recovery-shared-asset',
+      userId: 'user-a',
+      contentHash: 'e'.repeat(64),
+      mimeType: 'text/plain',
+      extension: 'txt',
+      byteSize: 12,
+      relativePath: `assets/ee/${'e'.repeat(64)}.txt`,
+      createdAt: now,
+    };
+    await addSourceGraph(database, 'purged-one', { status: 'purged', asset: sharedAsset });
+    await addSourceGraph(database, 'purged-two', { status: 'purged', asset: sharedAsset });
+    await database.study_sources.bulkUpdate([
+      { key: 'purged-one', changes: { currentVersionId: null } },
+      { key: 'purged-two', changes: { currentVersionId: null } },
+    ]);
+    const deleteManagedAsset = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { deleted: true, alreadyMissing: false },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { deleted: false, alreadyMissing: true },
+      });
+
+    await purgeSourcePermanently('purged-one', 'user-a', {
+      database,
+      confirmed: true,
+      deleteManagedAsset,
+    });
+    expect(deleteManagedAsset).toHaveBeenCalledTimes(1);
+    expect(await database.study_sources.get('purged-one')).toBeUndefined();
+    expect(await database.study_sources.get('purged-two')).toMatchObject({ status: 'purged' });
+    expect(await database.source_assets.get(sharedAsset.id)).toEqual(sharedAsset);
+
+    await purgeSourcePermanently('purged-two', 'user-a', {
+      database,
+      confirmed: true,
+      deleteManagedAsset,
+    });
+    expect(deleteManagedAsset).toHaveBeenCalledTimes(2);
+    expect(await database.source_assets.get(sharedAsset.id)).toBeUndefined();
+  });
+
   it('deletes the last asset reference while preserving exact historical grounding', async () => {
     const database = await createDatabase();
     const graph = await addSourceGraph(database, 'grounded-source', { status: 'trashed' });

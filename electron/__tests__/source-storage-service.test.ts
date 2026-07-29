@@ -228,6 +228,44 @@ describe('managed source storage service', () => {
     await expect(fs.readFile(pathname)).resolves.toEqual(content);
   });
 
+  it('rejects an assets-directory junction replacement before deletion', async () => {
+    const userData = await temporaryDirectory();
+    const externalDirectory = await temporaryDirectory();
+    const service = createService(userData);
+    await service.initialize();
+    const content = Buffer.from('must remain outside managed storage');
+    const contentHash = crypto.createHash('sha256').update(content).digest('hex');
+    const relativePath = `assets/${contentHash.slice(0, 2)}/${contentHash}.txt`;
+    const externalAssetPath = path.join(
+      externalDirectory,
+      ...relativePath.split('/').slice(1),
+    );
+    await fs.mkdir(path.dirname(externalAssetPath), { recursive: true });
+    await fs.writeFile(externalAssetPath, content);
+
+    const assetsPath = path.join(userData, 'sources', 'assets');
+    await fs.rm(assetsPath, { recursive: true, force: true });
+    try {
+      await fs.symlink(
+        externalDirectory,
+        assetsPath,
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+      throw error;
+    }
+
+    await expect(service.deleteManagedAsset({
+      relativePath,
+      expectedContentHash: contentHash,
+      expectedMimeType: 'text/plain',
+      expectedExtension: 'txt',
+      expectedByteSize: content.byteLength,
+    })).rejects.toMatchObject({ code: 'MANAGED_ASSET_IDENTITY_MISMATCH' });
+    await expect(fs.readFile(externalAssetPath)).resolves.toEqual(content);
+  });
+
   it('uses bounded retries for locked managed assets and returns a recoverable safe error', async () => {
     const userData = await temporaryDirectory();
     const content = Buffer.from('locked file');

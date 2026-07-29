@@ -336,15 +336,37 @@ export class SourceStorageService {
     const pathname = resolveManagedRelativePath(paths, request.relativePath, 'assets');
     let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
     try {
-      const [realAssetRoot, realPath, linkStat, shardStat] = await Promise.all([
+      const [
+        rootStat,
+        assetRootStat,
+        realManagedRoot,
+        realAssetRoot,
+        realPath,
+        linkStat,
+        shardStat,
+      ] = await Promise.all([
+        fs.lstat(paths.root),
+        fs.lstat(paths.assets),
+        fs.realpath(paths.root),
         fs.realpath(paths.assets),
         fs.realpath(pathname),
         fs.lstat(pathname),
         fs.lstat(path.dirname(pathname)),
       ]);
       const relativeRealPath = path.relative(realAssetRoot, realPath);
+      const relativeAssetRoot = path.relative(realManagedRoot, realAssetRoot);
       if (
-        !relativeRealPath
+        rootStat.isSymbolicLink()
+        || !rootStat.isDirectory()
+        || assetRootStat.isSymbolicLink()
+        || !assetRootStat.isDirectory()
+        || path.relative(paths.root, realManagedRoot) !== ''
+        || path.relative(paths.assets, realAssetRoot) !== ''
+        || !relativeAssetRoot
+        || relativeAssetRoot === '..'
+        || relativeAssetRoot.startsWith(`..${path.sep}`)
+        || path.isAbsolute(relativeAssetRoot)
+        || !relativeRealPath
         || relativeRealPath === '..'
         || relativeRealPath.startsWith(`..${path.sep}`)
         || path.isAbsolute(relativeRealPath)

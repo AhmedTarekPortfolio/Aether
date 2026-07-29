@@ -184,10 +184,19 @@ async function createAssetPlan(
     const asset = await database.source_assets.get(assetId);
     if (!asset || asset.userId !== source.userId) continue;
     const references = await database.source_versions.where('assetId').equals(assetId).toArray();
+    const otherReferences = references.filter((version) => version.sourceId !== source.id);
+    const otherSources = await database.study_sources.bulkGet(
+      [...new Set(otherReferences.map((version) => version.sourceId))],
+    );
+    const purgedSourceIds = new Set(
+      otherSources
+        .filter((otherSource) => otherSource?.status === 'purged')
+        .map((otherSource) => otherSource!.id),
+    );
     assets.push({
       asset,
-      otherReferenceCount: references.filter(
-        (version) => version.sourceId !== source.id,
+      otherReferenceCount: otherReferences.filter(
+        (version) => !purgedSourceIds.has(version.sourceId),
       ).length,
     });
   }
