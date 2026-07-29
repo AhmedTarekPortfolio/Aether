@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aether PDF Pipeline"
+  short_description: "Evaluate and implement Aether PDF support"
+  default_prompt: "Use $aether-pdf-pipeline to evaluate or implement Aether PDF support within the approved work-package boundary."
