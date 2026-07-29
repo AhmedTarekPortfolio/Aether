@@ -10,6 +10,10 @@ const sourceMethods = [
   'cancel',
   'reconcile',
   'getCapabilities',
+  'extractPdf',
+  'cancelPdf',
+  'createPdfViewerGrant',
+  'revokePdfViewerGrant',
 ] as const;
 
 const sourceChannels = [
@@ -19,6 +23,11 @@ const sourceChannels = [
   IPCChannel.SOURCES_CANCEL,
   IPCChannel.SOURCES_RECONCILE,
   IPCChannel.SOURCES_GET_CAPABILITIES,
+  IPCChannel.SOURCES_PDF_EXTRACT,
+  IPCChannel.SOURCES_PDF_CANCEL,
+  IPCChannel.SOURCES_PDF_PROGRESS,
+  IPCChannel.SOURCES_PDF_VIEWER_GRANT,
+  IPCChannel.SOURCES_PDF_VIEWER_REVOKE,
 ] as const;
 
 describe('source preload parity', () => {

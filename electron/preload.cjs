@@ -22,6 +22,11 @@ const IPCChannel = {
   SOURCES_CANCEL: 'aether:sources:cancel',
   SOURCES_RECONCILE: 'aether:sources:reconcile',
   SOURCES_GET_CAPABILITIES: 'aether:sources:get-capabilities',
+  SOURCES_PDF_EXTRACT: 'aether:sources:pdf-extract',
+  SOURCES_PDF_CANCEL: 'aether:sources:pdf-cancel',
+  SOURCES_PDF_PROGRESS: 'aether:sources:pdf-progress',
+  SOURCES_PDF_VIEWER_GRANT: 'aether:sources:pdf-viewer-grant',
+  SOURCES_PDF_VIEWER_REVOKE: 'aether:sources:pdf-viewer-revoke',
 
   APP_GET_INFO: 'aether:app:get-info',
   APP_GET_VERSION: 'aether:app:get-version',
@@ -113,6 +118,25 @@ const aetherDesktopAPI = {
     },
     getCapabilities() {
       return ipcRenderer.invoke(IPCChannel.SOURCES_GET_CAPABILITIES);
+    },
+    extractPdf(request, onProgress) {
+      const listener = (_event, progress) => {
+        if (progress && progress.jobId === request.jobId) onProgress(progress);
+      };
+      ipcRenderer.on(IPCChannel.SOURCES_PDF_PROGRESS, listener);
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_EXTRACT, request)
+        .finally(() => {
+          ipcRenderer.removeListener(IPCChannel.SOURCES_PDF_PROGRESS, listener);
+        });
+    },
+    cancelPdf(request) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_CANCEL, request);
+    },
+    createPdfViewerGrant(request) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_VIEWER_GRANT, request);
+    },
+    revokePdfViewerGrant(request) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_VIEWER_REVOKE, request);
     },
   },
   app: {

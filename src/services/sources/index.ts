@@ -4,4 +4,6 @@ export * from './sourceImportService';
 export * from './sourceImportTypes';
 export * from './sourceLibrary';
 export * from './sourceSearch';
+export * from './pdfImportPersistence';
+export * from './pdfImportService';
 export * from './textNormalisation';

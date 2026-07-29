@@ -6,7 +6,9 @@ import {
   discardIncompleteSource,
   getSourceLibraryEntries,
   recoverInterruptedTextImports,
+  recoverInterruptedPdfImports,
   retryTextImport,
+  retryPdfImport,
   searchImportedSources,
   SourceImportError,
   type SourceImportResult,
@@ -30,6 +32,7 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
   const [importOpen, setImportOpen] = useState(false);
   const [readerEntry, setReaderEntry] = useState<SourceLibraryEntry | null>(null);
+  const [readerInitialPage, setReaderInitialPage] = useState(1);
   const [refreshGeneration, setRefreshGeneration] = useState(0);
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SourceSearchResult[]>([]);
@@ -43,8 +46,12 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
   useEffect(() => {
     if (recoveryStarted.current) return;
     recoveryStarted.current = true;
-    recoverInterruptedTextImports(userId)
-      .then((results) => {
+    Promise.all([
+      recoverInterruptedTextImports(userId),
+      recoverInterruptedPdfImports(userId),
+    ])
+      .then(([textResults, pdfResults]) => {
+        const results = [...textResults, ...pdfResults];
         if (results.length) {
           const recovered = results.filter((result) => result.recovered).length;
           setMessage(`Checked ${results.length} interrupted import${results.length === 1 ? '' : 's'}; ${recovered} recovered.`);
@@ -68,7 +75,9 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
   async function retry(entry: SourceLibraryEntry) {
     setMessage(`Retrying ${entry.source.displayName}…`);
     try {
-      const result = await retryTextImport(entry.source.id, userId);
+      const result = entry.source.sourceType === 'pdf'
+        ? await retryPdfImport(entry.source.id, userId)
+        : await retryTextImport(entry.source.id, userId);
       completed(result);
     } catch (error) {
       setMessage(
@@ -117,7 +126,10 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
     const entry = entries.find((candidate) => candidate.source.id === result.source.id)
       ?? (await getSourceLibraryEntries(userId, subjectId))
         .find((candidate) => candidate.source.id === result.source.id);
-    if (entry) setReaderEntry(entry);
+    if (entry) {
+      setReaderInitialPage(result.locator.physicalPage ?? 1);
+      setReaderEntry(entry);
+    }
   }
 
   return (
@@ -125,15 +137,15 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
       <section className="flex flex-col justify-between gap-4 rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-secondary)] p-6 md:flex-row md:items-center">
         <div>
           <div className="mb-2 flex flex-wrap gap-2 text-xs font-semibold">
-            {['TXT', 'Markdown', 'Pasted text'].map((label) => (
+            {['TXT', 'Markdown', 'PDF', 'Pasted text'].map((label) => (
               <span key={label} className="rounded-full bg-[var(--accent-blue)]/10 px-2.5 py-1 text-[var(--accent-blue)]">
                 {label}
               </span>
             ))}
           </div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Local text sources</h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Local sources</h1>
           <p className="mt-1 max-w-2xl text-sm text-[var(--text-secondary)]">
-            Import, read, and search durable text locally. This source library is not connected to AI.
+            Import, read, view, and search durable local text and PDFs. This source library is not connected to AI.
           </p>
         </div>
         <Button
@@ -207,7 +219,9 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
               <strong className="text-sm">{result.source.displayName}</strong>
               <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{result.excerpt}</p>
               <span className="mt-2 block text-[11px] text-[var(--text-muted)]">
-                Characters {result.locator.charStart.toLocaleString()}–{result.locator.charEnd.toLocaleString()}
+                {result.locator.physicalPage
+                  ? `Physical page ${result.locator.physicalPage}${result.locator.printedPageLabel ? ` • printed label ${result.locator.printedPageLabel}` : ''}`
+                  : `Characters ${result.locator.charStart.toLocaleString()}–${result.locator.charEnd.toLocaleString()}`}
               </span>
             </button>
           ))}
@@ -218,7 +232,10 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
         <h2 className="text-lg font-semibold">Imported sources</h2>
         <SourceList
           entries={entries}
-          onOpen={setReaderEntry}
+          onOpen={(entry) => {
+            setReaderInitialPage(1);
+            setReaderEntry(entry);
+          }}
           onRetry={retry}
           onDiscard={discard}
         />
@@ -235,7 +252,11 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
         onClose={() => setImportOpen(false)}
         onCompleted={completed}
       />
-      <SourceReader entry={readerEntry} onClose={() => setReaderEntry(null)} />
+      <SourceReader
+        entry={readerEntry}
+        initialPage={readerInitialPage}
+        onClose={() => setReaderEntry(null)}
+      />
     </div>
   );
 }

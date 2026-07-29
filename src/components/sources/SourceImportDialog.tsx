@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ClipboardPaste, FileUp, StopCircle } from 'lucide-react';
+import { ClipboardPaste, FileText, FileUp, StopCircle } from 'lucide-react';
 import type { Note, Subject, Task, Topic } from '../../types';
 import {
   importPastedText,
+  importPdfFile,
   importTextFile,
   MAX_PASTED_TEXT_CHARACTERS,
   SourceImportError,
@@ -40,7 +41,7 @@ export function SourceImportDialog({
   onClose,
   onCompleted,
 }: SourceImportDialogProps) {
-  const [mode, setMode] = useState<'file' | 'paste'>('file');
+  const [mode, setMode] = useState<'file' | 'pdf' | 'paste'>('file');
   const [subjectId, setSubjectId] = useState(initialSubjectId ?? subjects[0]?.id ?? '');
   const [topicId, setTopicId] = useState('');
   const [taskId, setTaskId] = useState('');
@@ -95,6 +96,12 @@ export function SourceImportDialog({
           signal: controller.current.signal,
           onProgress: setProgress,
         });
+      } else if (mode === 'pdf') {
+        controller.current = new AbortController();
+        imported = await importPdfFile(context, {
+          signal: controller.current.signal,
+          onProgress: setProgress,
+        });
       } else {
         imported = await importPastedText(context, pastedText, { onProgress: setProgress });
       }
@@ -123,13 +130,13 @@ export function SourceImportDialog({
     <Modal isOpen={isOpen} onClose={closeOrCancel} title="Import local source" maxWidth="2xl">
       <form onSubmit={submit} className="space-y-5">
         <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--bg-primary)] p-3 text-sm">
-          <strong>Supported now:</strong> TXT, Markdown, and pasted text.
+          <strong>Supported now:</strong> TXT, Markdown, PDF, and pasted text.
           <span className="ml-1 text-[var(--text-secondary)]">
             Files remain local and are not sent to AI.
           </span>
         </div>
 
-        <fieldset disabled={busy} className="grid grid-cols-2 gap-2">
+        <fieldset disabled={busy} className="grid grid-cols-3 gap-2">
           <legend className="sr-only">Import mode</legend>
           <button
             type="button"
@@ -139,6 +146,15 @@ export function SourceImportDialog({
           >
             <FileUp className="mx-auto mb-1 h-5 w-5" />
             Choose TXT or Markdown
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === 'pdf'}
+            onClick={() => { setMode('pdf'); resetAttempt(); }}
+            className={`rounded-xl border p-3 text-sm ${mode === 'pdf' ? 'border-[var(--accent-purple)] bg-[var(--accent-purple)]/10' : 'border-[var(--border-glass)]'}`}
+          >
+            <FileText className="mx-auto mb-1 h-5 w-5" />
+            Choose PDF
           </button>
           <button
             type="button"
@@ -221,7 +237,7 @@ export function SourceImportDialog({
               value={displayTitle}
               maxLength={200}
               onChange={(event) => setDisplayTitle(event.target.value)}
-              placeholder={mode === 'file' ? 'Defaults to filename' : 'Defaults to Pasted text'}
+              placeholder={mode === 'paste' ? 'Defaults to Pasted text' : 'Defaults to filename'}
               className="w-full rounded-xl border border-[var(--border-glass)] bg-[var(--bg-primary)] p-2.5"
             />
           </label>
@@ -287,7 +303,9 @@ export function SourceImportDialog({
           </Button>
           {!result && (
             <Button type="submit" disabled={busy || !subjectId}>
-              {mode === 'file' ? 'Choose and import file' : 'Import pasted text'}
+              {mode === 'paste'
+                ? 'Import pasted text'
+                : mode === 'pdf' ? 'Choose and import PDF' : 'Choose and import file'}
             </Button>
           )}
         </div>

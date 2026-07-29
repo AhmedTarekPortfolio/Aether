@@ -10,6 +10,15 @@ const mocks = vi.hoisted(() => ({
     reconcile: vi.fn(),
     getCapabilities: vi.fn(),
   },
+  parser: {
+    extract: vi.fn(),
+    cancel: vi.fn(),
+  },
+  viewer: {
+    createGrant: vi.fn(),
+    revoke: vi.fn(),
+    revokeSender: vi.fn(),
+  },
 }));
 
 vi.mock('electron', () => ({
@@ -24,17 +33,33 @@ vi.mock('../services/sources/source-storage-provider.js', () => ({
   getSourceStorageService: () => mocks.service,
 }));
 
+vi.mock('../services/sources/pdf/pdf-parser-host.js', () => ({
+  getPdfParserHost: () => mocks.parser,
+}));
+
+vi.mock('../services/sources/pdf/pdf-viewer-service.js', () => ({
+  getPdfViewerService: () => mocks.viewer,
+}));
+
 import { registerSourcesIPCHandlers } from '../ipc/sources.ipc';
 import { IPCChannel } from '../types/ipc-contracts';
 
 describe('source-storage IPC handlers', () => {
+  const window = {
+    isDestroyed: () => false,
+    webContents: {
+      id: 7,
+      once: vi.fn(),
+    },
+  };
+
   beforeEach(() => {
     mocks.handlers.clear();
     vi.clearAllMocks();
-    registerSourcesIPCHandlers({} as never);
+    registerSourcesIPCHandlers(window as never);
   });
 
-  it('registers exactly the six narrow source channels', () => {
+  it('registers the narrow storage and PDF source channels', () => {
     expect([...mocks.handlers.keys()].sort()).toEqual([
       IPCChannel.SOURCES_CANCEL,
       IPCChannel.SOURCES_FINALISE,
@@ -42,6 +67,10 @@ describe('source-storage IPC handlers', () => {
       IPCChannel.SOURCES_READ_TEXT_ASSET,
       IPCChannel.SOURCES_RECONCILE,
       IPCChannel.SOURCES_SELECT_AND_STAGE,
+      IPCChannel.SOURCES_PDF_EXTRACT,
+      IPCChannel.SOURCES_PDF_CANCEL,
+      IPCChannel.SOURCES_PDF_VIEWER_GRANT,
+      IPCChannel.SOURCES_PDF_VIEWER_REVOKE,
     ].sort());
   });
 
@@ -101,7 +130,7 @@ describe('source-storage IPC handlers', () => {
       ok: true,
       value: { cancelled: true, receipts: [] },
     });
-    expect(mocks.service.selectAndStage).toHaveBeenCalledWith({}, request);
+    expect(mocks.service.selectAndStage).toHaveBeenCalledWith(window, request);
 
     mocks.service.finalise.mockRejectedValueOnce(
       Object.assign(new Error('hidden path'), { code: 'STAGING_TOKEN_UNKNOWN' }),
@@ -125,5 +154,71 @@ describe('source-storage IPC handlers', () => {
 
     mocks.service.cancel.mockResolvedValue({ cancelled: false });
     expect(await cancel({}, 'a'.repeat(64))).toEqual({ cancelled: false });
+  });
+
+  it('validates the PDF sender, request, progress, and cancellation boundary', async () => {
+    const hash = 'a'.repeat(64);
+    const request = {
+      jobId: 'job-1',
+      sourceVersionId: 'version-1',
+      assetRelativePath: `assets/aa/${hash}.pdf`,
+      contentHash: hash,
+      byteSize: 1_000,
+      options: {
+        maxPages: 1_000,
+        maxCharacters: 5_000_000,
+        maxBoundingBoxes: 100_000,
+        maxOutputBytes: 16 * 1024 * 1024,
+        includeCoordinates: true,
+      },
+      cancellationToken: 'cancel-1',
+    };
+    const sender = {
+      id: 7,
+      isDestroyed: () => false,
+      send: vi.fn(),
+    };
+    const event = { sender };
+    mocks.parser.extract.mockImplementation(async (_request, progress) => {
+      progress({
+        jobId: 'job-1',
+        stage: 'parsing',
+        pagesProcessed: 1,
+        totalPages: 1,
+        percent: 95,
+      });
+      return {
+        jobId: 'job-1',
+        status: 'completed',
+        pageCount: 0,
+        pages: [],
+        scannedPageCount: 0,
+        truncated: false,
+        errorCode: null,
+        errorMessage: null,
+      };
+    });
+    const extract = mocks.handlers.get(IPCChannel.SOURCES_PDF_EXTRACT)!;
+    await expect(extract(event, request)).resolves.toMatchObject({
+      ok: true,
+      value: { status: 'completed' },
+    });
+    expect(sender.send).toHaveBeenCalledWith(
+      IPCChannel.SOURCES_PDF_PROGRESS,
+      expect.objectContaining({ jobId: 'job-1' }),
+    );
+
+    await expect(extract({
+      sender: { ...sender, id: 99 },
+    }, request)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PDF_OUTPUT_INVALID' },
+    });
+    mocks.parser.cancel.mockReturnValue(true);
+    const cancelPdf = mocks.handlers.get(IPCChannel.SOURCES_PDF_CANCEL)!;
+    await expect(cancelPdf(event, {
+      jobId: request.jobId,
+      cancellationToken: request.cancellationToken,
+    })).resolves.toEqual({ cancelled: true });
   });
 });

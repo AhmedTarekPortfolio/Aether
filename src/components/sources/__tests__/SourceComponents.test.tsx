@@ -8,12 +8,14 @@ import { SourceReader } from '../SourceReader';
 const mocks = vi.hoisted(() => ({
   importTextFile: vi.fn(),
   importPastedText: vi.fn(),
+  importPdfFile: vi.fn(),
 }));
 
 vi.mock('../../../services/sources', async (importActual) => ({
   ...await importActual<typeof import('../../../services/sources')>(),
   importTextFile: mocks.importTextFile,
   importPastedText: mocks.importPastedText,
+  importPdfFile: mocks.importPdfFile,
 }));
 
 const subjects = [{
@@ -149,10 +151,10 @@ describe('source import and display UI', () => {
     vi.clearAllMocks();
   });
 
-  it('advertises only TXT, Markdown, and pasted text with required subject context', () => {
+  it('advertises TXT, Markdown, PDF, and pasted text with required subject context', () => {
     renderImportDialog();
-    expect(screen.getByText(/TXT, Markdown, and pasted text/)).toBeInTheDocument();
-    expect(screen.queryByText(/^PDF$/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/TXT, Markdown, PDF, and pasted text/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose PDF' })).toBeInTheDocument();
     expect(screen.queryByText(/^Image$/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Subject/)).toBeRequired();
     expect(screen.getByRole('button', { name: /Choose TXT or Markdown/ })).toHaveAttribute(
@@ -199,6 +201,33 @@ describe('source import and display UI', () => {
     });
     expect(mocks.importPastedText.mock.calls[0][1]).toBe('Arabic عربي');
     expect(await screen.findByText(/is ready with 1 local-search chunks/)).toBeInTheDocument();
+  });
+
+  it('routes explicit PDF mode through the isolated PDF import service', async () => {
+    mocks.importPdfFile.mockImplementation(async (_context, options) => {
+      options.onProgress({ stage: 'extracting', message: 'Extracting page 1 of 2…' });
+      return {
+        sourceId: 'pdf-source',
+        versionId: 'pdf-version',
+        displayTitle: 'Physics PDF',
+        sourceType: 'pdf',
+        byteSize: 1_000,
+        characterCount: 50,
+        chunkCount: 2,
+        reusedManagedAsset: false,
+        pageCount: 2,
+        scannedPageCount: 0,
+        partiallyReady: false,
+      };
+    });
+    renderImportDialog();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose PDF' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose and import PDF' }));
+    await waitFor(() => expect(mocks.importPdfFile).toHaveBeenCalled());
+    expect(mocks.importPdfFile.mock.calls[0][0]).toMatchObject({
+      userId: 'user-a',
+      subjectId: 'subject-a',
+    });
   });
 
   it('renders imported Markdown as inert plain text with no executable elements', () => {

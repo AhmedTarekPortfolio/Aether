@@ -21,9 +21,9 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
     return (
       <div className="rounded-2xl border border-dashed border-[var(--border-glass-hover)] p-10 text-center">
         <FileText className="mx-auto mb-3 h-8 w-8 text-[var(--text-muted)]" />
-        <p className="font-medium text-[var(--text-primary)]">No imported text sources yet</p>
+        <p className="font-medium text-[var(--text-primary)]">No imported local sources yet</p>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          Import TXT, Markdown, or pasted text to build your local source library.
+          Import TXT, Markdown, PDF, or pasted text to build your local source library.
         </p>
       </div>
     );
@@ -32,7 +32,10 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
   return (
     <div className="grid gap-4 lg:grid-cols-2" aria-label="Imported sources">
       {entries.map((entry) => {
-        const ready = entry.version?.status === 'ready' && Boolean(entry.segment);
+        const ready = (
+          entry.version?.status === 'ready'
+          || entry.version?.status === 'partially_ready'
+        ) && Boolean(entry.segment);
         const associations = entry.associations.map(
           (association) => `${association.targetType}: ${association.label}`,
         ).concat(entry.pendingContextLabels);
@@ -52,7 +55,9 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   {entry.source.sourceType === 'pasted-text'
                     ? 'Pasted text'
-                    : entry.source.sourceType === 'markdown' ? 'Markdown' : 'TXT'}
+                    : entry.source.sourceType === 'markdown'
+                      ? 'Markdown'
+                      : entry.source.sourceType === 'pdf' ? 'PDF' : 'TXT'}
                   {' • '}
                   {entry.version?.status ?? 'pending'}
                 </p>
@@ -74,8 +79,13 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
                 </dd>
               </div>
               <div>
-                <dt className="text-[var(--text-muted)]">Text</dt>
+                <dt className="text-[var(--text-muted)]">
+                  {entry.source.sourceType === 'pdf' ? 'Pages / text' : 'Text'}
+                </dt>
                 <dd className="mt-0.5 text-[var(--text-primary)]">
+                  {entry.source.sourceType === 'pdf'
+                    ? `${entry.version?.pageCount ?? 0} pages • `
+                    : ''}
                   {(entry.version?.charCount ?? 0).toLocaleString()} characters
                 </dd>
               </div>

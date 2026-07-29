@@ -2,11 +2,13 @@ import { db, type AetherDatabase } from '../../db/database';
 import type {
   SourceAssociation,
   SourceAsset,
+  SourceJob,
   SourceSegment,
   SourceVersion,
   StudySource,
 } from '../../types';
 import { parsePersistedImportPayload } from './sourceImportPersistence';
+import { parsePersistedPdfImportPayload } from './pdfImportPersistence';
 
 export interface SourceAssociationDisplay extends SourceAssociation {
   label: string;
@@ -16,10 +18,17 @@ export interface SourceLibraryEntry {
   source: StudySource;
   version: SourceVersion | null;
   segment: SourceSegment | null;
+  segments?: SourceSegment[];
   asset: SourceAsset | null;
   associations: SourceAssociationDisplay[];
   pendingContextLabels: string[];
   chunkCount: number;
+  latestJob?: SourceJob | null;
+}
+
+function pendingContextFromJob(job: SourceJob | undefined) {
+  return parsePersistedImportPayload(job?.payload)?.context
+    ?? parsePersistedPdfImportPayload(job?.payload)?.context;
 }
 
 async function associationLabel(
@@ -48,6 +57,7 @@ export async function getSourceLibraryEntries(
       source.status === 'active'
       && (source.sourceType === 'txt'
         || source.sourceType === 'markdown'
+        || source.sourceType === 'pdf'
         || source.sourceType === 'pasted-text'));
   if (subjectId) {
     const associatedIds = new Set(
@@ -62,7 +72,7 @@ export async function getSourceLibraryEntries(
     for (const source of sources) {
       const jobs = await database.source_jobs.where('sourceId').equals(source.id).toArray();
       const latest = jobs.sort((left, right) => right.createdAt - left.createdAt)[0];
-      if (parsePersistedImportPayload(latest?.payload)?.context.subjectId === subjectId) {
+      if (pendingContextFromJob(latest)?.subjectId === subjectId) {
         pendingIds.add(source.id);
       }
     }
@@ -77,14 +87,17 @@ export async function getSourceLibraryEntries(
     const version = source.currentVersionId
       ? await database.source_versions.get(source.currentVersionId) ?? null
       : versions.at(-1) ?? null;
-    const [segment, asset, associations, chunkCount] = version
+    const [segments, asset, associations, chunkCount] = version
       ? await Promise.all([
-          database.source_segments.where('sourceVersionId').equals(version.id).first(),
+          database.source_segments
+            .where('sourceVersionId')
+            .equals(version.id)
+            .sortBy('ordinal'),
           version.assetId ? database.source_assets.get(version.assetId) : undefined,
           database.source_associations.where('sourceId').equals(source.id).toArray(),
           database.source_chunks.where('sourceVersionId').equals(version.id).count(),
         ])
-      : [undefined, undefined, [], 0] as const;
+      : [[], undefined, [], 0];
     const displayedAssociations = await Promise.all(
       associations.map(async (association) => ({
         ...association,
@@ -93,7 +106,7 @@ export async function getSourceLibraryEntries(
     );
     const jobs = await database.source_jobs.where('sourceId').equals(source.id).toArray();
     const latestJob = jobs.sort((left, right) => right.createdAt - left.createdAt)[0];
-    const pendingContext = parsePersistedImportPayload(latestJob?.payload)?.context;
+    const pendingContext = pendingContextFromJob(latestJob);
     const pendingContextLabels: string[] = [];
     if (displayedAssociations.length === 0 && pendingContext) {
       const [subject, topic, task, note] = await Promise.all([
@@ -110,11 +123,13 @@ export async function getSourceLibraryEntries(
     return {
       source,
       version,
-      segment: segment ?? null,
+      segment: segments[0] ?? null,
+      segments,
       asset: asset ?? null,
       associations: displayedAssociations,
       pendingContextLabels,
       chunkCount,
+      latestJob: latestJob ?? null,
     };
   }));
 

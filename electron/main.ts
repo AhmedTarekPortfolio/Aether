@@ -6,9 +6,18 @@ import { registerAllIPCHandlers } from './ipc/register-ipc-handlers.js';
 import { setupNavigationPolicy } from './security/navigation-policy.js';
 import { resolveUserDataOverride } from './security/user-data-override.js';
 import { initializeSourceStorage } from './services/sources/source-storage-provider.js';
+import {
+  initializePdfViewerProtocol,
+  registerPdfViewerScheme,
+  shutdownPdfViewerProtocol,
+} from './services/sources/pdf/pdf-viewer-protocol.js';
+import { shutdownPdfParserHost } from './services/sources/pdf/pdf-parser-host.js';
+import { shutdownPdfViewerService } from './services/sources/pdf/pdf-viewer-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+registerPdfViewerScheme();
 
 const userDataOverride = resolveUserDataOverride(process.argv);
 if (userDataOverride) app.setPath('userData', userDataOverride);
@@ -46,12 +55,6 @@ function createWindow(): void {
   console.log('ELECTRON_STARTUP_DIAGNOSTICS:', {
     isPackaged: app.isPackaged,
     nodeEnv: process.env.NODE_ENV,
-    appPath: app.getAppPath(),
-    dirname: __dirname,
-    rendererPath,
-    fallbackPath,
-    resolvedRendererPath,
-    preloadPath,
     rendererExists: fs.existsSync(resolvedRendererPath),
     preloadExists: fs.existsSync(preloadPath),
   });
@@ -74,18 +77,16 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Renderer failed to load', {
       errorCode,
       errorDescription,
-      validatedURL,
     });
   });
 
-  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+  mainWindow.webContents.on('preload-error', (_event, _preloadPath, error) => {
     console.error('Preload failed', {
-      preloadPath,
-      error,
+      error: error.name,
     });
   });
 
@@ -93,8 +94,8 @@ function createWindow(): void {
     console.error('Renderer process terminated', details);
   });
 
-  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    console.log(`[Renderer:${level}]`, message, sourceId, line);
+  mainWindow.webContents.on('console-message', (_event, level, message, line) => {
+    console.log(`[Renderer:${level}]`, message, line);
   });
 
   // Setup IPC Handlers
@@ -127,8 +128,9 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   try {
     await initializeSourceStorage();
+    await initializePdfViewerProtocol();
   } catch {
-    console.error('[SourceStorage] Initialisation failed');
+    console.error('[LocalSources] Initialisation failed');
   }
   createWindow();
 
@@ -143,4 +145,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  shutdownPdfParserHost();
+  shutdownPdfViewerService();
+  void shutdownPdfViewerProtocol();
 });

@@ -134,6 +134,13 @@ export interface AetherDesktopAPI {
     cancel(stagingToken: string): Promise<SourceCancellationResult>;
     reconcile(): Promise<SourceFilesystemReconciliationReport>;
     getCapabilities(): Promise<SourceStorageCapabilities>;
+    extractPdf(
+      request: PdfExtractionJobRequest,
+      onProgress: (progress: PdfJobProgress) => void,
+    ): Promise<PdfExtractionOperationResult>;
+    cancelPdf(request: PdfCancellationRequest): Promise<PdfCancellationResult>;
+    createPdfViewerGrant(request: PdfViewerGrantRequest): Promise<PdfViewerGrantResult>;
+    revokePdfViewerGrant(request: PdfViewerRevokeRequest): Promise<{ revoked: boolean }>;
   };
   app: {
     getInfo(): Promise<DesktopAppInfo>;
@@ -157,3 +164,13 @@ import type {
   SourceStageOperationResult,
   SourceStorageCapabilities,
 } from './source-storage.js';
+import type {
+  PdfCancellationRequest,
+  PdfCancellationResult,
+  PdfExtractionJobRequest,
+  PdfExtractionOperationResult,
+  PdfJobProgress,
+  PdfViewerGrantRequest,
+  PdfViewerGrantResult,
+  PdfViewerRevokeRequest,
+} from './pdf.js';

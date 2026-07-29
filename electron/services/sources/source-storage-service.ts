@@ -75,6 +75,12 @@ export interface ActiveStagingOperation {
   completion: Promise<SourceStagingReceipt>;
 }
 
+export interface VerifiedManagedPdfAsset {
+  absolutePath: string;
+  byteSize: number;
+  contentHash: string;
+}
+
 async function safeUnlink(pathname: string): Promise<void> {
   try {
     await retryFileOperation(() => fs.unlink(pathname));
@@ -149,6 +155,66 @@ export class SourceStorageService {
       stagingReceiptLifetimeMs: this.receiptLifetimeMs,
       physicalAssetScope: 'shared-content-addressed',
     };
+  }
+
+  public async resolveVerifiedPdfAsset(
+    relativePath: string,
+    expectedContentHash: string,
+    expectedByteSize: number,
+    extractionByteLimit = 50 * 1024 * 1024,
+  ): Promise<VerifiedManagedPdfAsset> {
+    const paths = this.requirePaths();
+    if (
+      !/^[a-f0-9]{64}$/.test(expectedContentHash)
+      || !Number.isSafeInteger(expectedByteSize)
+      || expectedByteSize <= 0
+      || !Number.isSafeInteger(extractionByteLimit)
+      || extractionByteLimit <= 0
+      || assetRelativePath(expectedContentHash, 'pdf') !== relativePath
+    ) {
+      throw new SourceStorageError('INVALID_REQUEST');
+    }
+    if (expectedByteSize > extractionByteLimit) {
+      throw new SourceStorageError('FILE_TOO_LARGE');
+    }
+
+    const pathname = resolveManagedRelativePath(paths, relativePath, 'assets');
+    try {
+      const [realAssetRoot, realPath, linkStat] = await Promise.all([
+        fs.realpath(paths.assets),
+        fs.realpath(pathname),
+        fs.lstat(pathname),
+      ]);
+      const relativeRealPath = path.relative(realAssetRoot, realPath);
+      if (
+        !relativeRealPath
+        || relativeRealPath === '..'
+        || relativeRealPath.startsWith(`..${path.sep}`)
+        || path.isAbsolute(relativeRealPath)
+        || linkStat.isSymbolicLink()
+        || !linkStat.isFile()
+        || linkStat.size !== expectedByteSize
+      ) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+      const facts = await this.hashFile(pathname);
+      if (
+        facts.contentHash !== expectedContentHash
+        || facts.byteSize !== expectedByteSize
+      ) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+      return {
+        absolutePath: realPath,
+        byteSize: facts.byteSize,
+        contentHash: facts.contentHash,
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new SourceStorageError('MANAGED_ASSET_NOT_FOUND', { cause: error });
+      }
+      throw error;
+    }
   }
 
   public async readTextAsset(

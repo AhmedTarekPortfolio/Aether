@@ -27,6 +27,16 @@ import type {
   SourceStageOperationResult,
   SourceStorageCapabilities,
 } from './types/source-storage.js';
+import type {
+  PdfCancellationRequest,
+  PdfCancellationResult,
+  PdfExtractionJobRequest,
+  PdfExtractionOperationResult,
+  PdfJobProgress,
+  PdfViewerGrantRequest,
+  PdfViewerGrantResult,
+  PdfViewerRevokeRequest,
+} from './types/pdf.js';
 
 const aetherDesktopAPI: AetherDesktopAPI = {
   ai: {
@@ -112,6 +122,28 @@ const aetherDesktopAPI: AetherDesktopAPI = {
     },
     getCapabilities(): Promise<SourceStorageCapabilities> {
       return ipcRenderer.invoke(IPCChannel.SOURCES_GET_CAPABILITIES);
+    },
+    extractPdf(
+      request: PdfExtractionJobRequest,
+      onProgress: (progress: PdfJobProgress) => void,
+    ): Promise<PdfExtractionOperationResult> {
+      const listener = (_event: Electron.IpcRendererEvent, progress: PdfJobProgress) => {
+        if (progress?.jobId === request.jobId) onProgress(progress);
+      };
+      ipcRenderer.on(IPCChannel.SOURCES_PDF_PROGRESS, listener);
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_EXTRACT, request)
+        .finally(() => {
+          ipcRenderer.removeListener(IPCChannel.SOURCES_PDF_PROGRESS, listener);
+        });
+    },
+    cancelPdf(request: PdfCancellationRequest): Promise<PdfCancellationResult> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_CANCEL, request);
+    },
+    createPdfViewerGrant(request: PdfViewerGrantRequest): Promise<PdfViewerGrantResult> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_VIEWER_GRANT, request);
+    },
+    revokePdfViewerGrant(request: PdfViewerRevokeRequest): Promise<{ revoked: boolean }> {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_PDF_VIEWER_REVOKE, request);
     },
   },
   app: {

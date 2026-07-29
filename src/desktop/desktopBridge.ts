@@ -13,6 +13,13 @@ import type {
   ReadManagedTextAssetRequest,
   SourceFileSelectionRequest,
 } from '../../electron/types/source-storage';
+import type {
+  PdfCancellationRequest,
+  PdfExtractionJobRequest,
+  PdfJobProgress,
+  PdfViewerGrantRequest,
+  PdfViewerRevokeRequest,
+} from '../../electron/types/pdf';
 
 export const desktopBridge = {
   async send(request: AITransportChatRequest, signal?: AbortSignal): Promise<NormalizedAIResponse> {
@@ -181,5 +188,48 @@ export const desktopBridge = {
       stagingReceiptLifetimeMs: 0,
       physicalAssetScope: 'shared-content-addressed' as const,
     };
+  },
+
+  async extractPdf(
+    request: PdfExtractionJobRequest,
+    onProgress: (progress: PdfJobProgress) => void,
+  ) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.extractPdf(request, onProgress);
+    }
+    return {
+      ok: false as const,
+      error: {
+        code: 'PDF_OUTPUT_INVALID' as const,
+        message: 'PDF extraction is available only in the desktop application.',
+      },
+    };
+  },
+
+  async cancelPdfExtraction(request: PdfCancellationRequest) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.cancelPdf(request);
+    }
+    return { cancelled: false };
+  },
+
+  async createPdfViewerGrant(request: PdfViewerGrantRequest) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.createPdfViewerGrant(request);
+    }
+    return {
+      ok: false as const,
+      error: {
+        code: 'PDF_OUTPUT_INVALID' as const,
+        message: 'PDF viewing is available only in the desktop application.',
+      },
+    };
+  },
+
+  async revokePdfViewerGrant(request: PdfViewerRevokeRequest) {
+    if (isDesktop() && window.aetherDesktop) {
+      return window.aetherDesktop.sources.revokePdfViewerGrant(request);
+    }
+    return { revoked: false };
   },
 };

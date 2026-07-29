@@ -36,7 +36,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     home: { main: `Welcome back, ${userProfile?.name || 'Scholar'}`, sub: "Here's your intelligent study orientation for today." },
     plan: { main: 'Planner & Tasks', sub: 'Organize deadlines, assignments, and study schedules.' },
     workspace: { main: 'Knowledge Workspace', sub: 'Course modules, lecture notes, and formula derivations.' },
-    sources: { main: 'Local Text Sources', sub: 'Import, read, and search TXT, Markdown, and pasted text locally.' },
+    sources: { main: 'Local Sources', sub: 'Import, view, read, and search TXT, Markdown, PDF, and pasted text locally.' },
     focus: { main: 'Deep Work Focus Room', sub: 'Distraction-free environment with Web Audio sound synthesis.' },
     assistant: { main: 'AI Study Coach', sub: 'Explain concepts, review writing, helper coding, and practice quizzes.' },
     insights: { main: 'Learning Analytics', sub: 'Track focus duration, subject mastery, and productivity velocity.' },

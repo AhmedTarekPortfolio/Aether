@@ -30,6 +30,7 @@
     "express": "^5.2.1",
     "framer-motion": "^12.4.7",
     "lucide-react": "^0.475.0",
+    "pdfjs-dist": "4.10.38",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.18.1",

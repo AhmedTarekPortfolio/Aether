@@ -30,6 +30,8 @@ export interface SourceSearchResult {
     charEnd: number;
     lineStart: number | null;
     lineEnd: number | null;
+    physicalPage: number | null;
+    printedPageLabel: string | null;
   };
 }
 
@@ -114,6 +116,7 @@ export async function searchImportedSources(
       && (!requestedIds || requestedIds.has(source.id))
       && (source.sourceType === 'txt'
         || source.sourceType === 'markdown'
+        || source.sourceType === 'pdf'
         || source.sourceType === 'pasted-text'))
     .sort((left, right) =>
       left.displayName.localeCompare(right.displayName)
@@ -124,7 +127,11 @@ export async function searchImportedSources(
   for (const source of sources) {
     if (candidateCount >= maximumCandidateChunks) break;
     const version = await database.source_versions.get(source.currentVersionId!);
-    if (!version || version.status !== 'ready' || version.userId !== request.userId) continue;
+    if (
+      !version
+      || (version.status !== 'ready' && version.status !== 'partially_ready')
+      || version.userId !== request.userId
+    ) continue;
     const chunks = (await database.source_chunks
       .where('sourceVersionId')
       .equals(version.id)
@@ -149,6 +156,8 @@ export async function searchImportedSources(
           charEnd: chunk.charEnd,
           lineStart: segment.lineStart,
           lineEnd: segment.lineEnd,
+          physicalPage: segment.physicalPage,
+          printedPageLabel: segment.printedPageLabel,
         },
       });
     }
