@@ -122,6 +122,17 @@ describe('local imported-source search', () => {
     }, database)).resolves.toEqual([]);
   });
 
+  it('excludes archived and trashed sources from default local search', async () => {
+    const { database, firstId, secondId } = await databaseWithSources();
+    await database.study_sources.update(firstId, { status: 'archived' });
+    await database.study_sources.update(secondId, { status: 'trashed' });
+    await expect(searchImportedSources({
+      userId: 'user-a',
+      subjectId: 'subject-a',
+      query: 'velocity',
+    }, database)).resolves.toEqual([]);
+  });
+
   it('returns no results for blank queries or missing subject scope', async () => {
     const { database } = await databaseWithSources();
     await expect(searchImportedSources({

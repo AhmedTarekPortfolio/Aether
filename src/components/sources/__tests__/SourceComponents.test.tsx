@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SourceLibraryEntry } from '../../../services/sources';
 import { SourceImportDialog } from '../SourceImportDialog';
 import { SourceList } from '../SourceList';
+import { SourcePurgeDialog } from '../SourcePurgeDialog';
 import { SourceReader } from '../SourceReader';
 
 const mocks = vi.hoisted(() => ({
@@ -280,5 +281,91 @@ describe('source import and display UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /Discard failed import/ }));
     expect(onRetry).toHaveBeenCalledWith(failed);
     expect(onDiscard).toHaveBeenCalledWith(failed);
+  });
+
+  it('shows lifecycle actions appropriate to active, archived, and trashed views', () => {
+    const active = libraryEntry('active');
+    const onArchive = vi.fn();
+    const onTrash = vi.fn();
+    const { rerender } = render(
+      <SourceList
+        entries={[active]}
+        onOpen={vi.fn()}
+        onRetry={vi.fn()}
+        onDiscard={vi.fn()}
+        onArchive={onArchive}
+        onTrash={onTrash}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to trash' }));
+    expect(onArchive).toHaveBeenCalledWith(active);
+    expect(onTrash).toHaveBeenCalledWith(active);
+
+    const archived = libraryEntry('archived');
+    archived.source.status = 'archived';
+    const onUnarchive = vi.fn();
+    rerender(
+      <SourceList
+        entries={[archived]}
+        status="archived"
+        onOpen={vi.fn()}
+        onRetry={vi.fn()}
+        onDiscard={vi.fn()}
+        onUnarchive={onUnarchive}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Restore to active' }));
+    expect(onUnarchive).toHaveBeenCalledWith(archived);
+
+    const trashed = libraryEntry('trashed');
+    trashed.source.status = 'trashed';
+    const onRestore = vi.fn();
+    const onPurge = vi.fn();
+    rerender(
+      <SourceList
+        entries={[trashed]}
+        status="trashed"
+        onOpen={vi.fn()}
+        onRetry={vi.fn()}
+        onDiscard={vi.fn()}
+        onRestore={onRestore}
+        onPurge={onPurge}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Permanently delete' }));
+    expect(onRestore).toHaveBeenCalledWith(trashed);
+    expect(onPurge).toHaveBeenCalledWith(trashed);
+  });
+
+  it('requires explicit purge confirmation and explains shared-asset retention', () => {
+    const onConfirm = vi.fn();
+    render(
+      <SourcePurgeDialog
+        preview={{
+          sourceId: 'source-a',
+          displayTitle: 'Shared source',
+          sourceType: 'pdf',
+          versionCount: 2,
+          segmentCount: 8,
+          managedAssetCount: 1,
+          sharedAsset: true,
+          willDeletePhysicalAsset: false,
+          willRetainPhysicalAsset: true,
+          assetDisposition: 'retain-shared',
+        }}
+        busy={false}
+        onClose={vi.fn()}
+        onConfirm={onConfirm}
+      />,
+    );
+    expect(screen.getByText('Shared source')).toBeInTheDocument();
+    expect(screen.getByText('PDF')).toBeInTheDocument();
+    expect(screen.getByText(/managed physical asset is shared/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be restored/i)).toBeInTheDocument();
+    expect(screen.getByText(/Source deleted/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Permanently delete' }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

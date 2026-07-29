@@ -57,6 +57,19 @@ export interface ReadManagedTextAssetReceipt {
   byteSize: number;
 }
 
+export interface DeleteManagedAssetRequest {
+  relativePath: string;
+  expectedContentHash: string;
+  expectedMimeType: string;
+  expectedExtension: string;
+  expectedByteSize: number;
+}
+
+export interface DeleteManagedAssetReceipt {
+  deleted: boolean;
+  alreadyMissing: boolean;
+}
+
 export type SourceStorageErrorCode =
   | 'INVALID_REQUEST'
   | 'DESKTOP_CAPABILITY_UNAVAILABLE'
@@ -74,6 +87,7 @@ export type SourceStorageErrorCode =
   | 'ASSET_PATH_CONFLICT'
   | 'MANAGED_ASSET_NOT_FOUND'
   | 'MANAGED_ASSET_IDENTITY_MISMATCH'
+  | 'MANAGED_ASSET_DELETE_FAILED'
   | 'INVALID_TEXT_ENCODING'
   | 'INVALID_TEXT_CONTENT'
   | 'OPERATION_CANCELLED'
@@ -96,6 +110,7 @@ export interface SourceStageOperationValue {
 export type SourceStageOperationResult = SourceOperationResult<SourceStageOperationValue>;
 export type AssetFinalisationResult = SourceOperationResult<AssetFinalisationReceipt>;
 export type ReadManagedTextAssetResult = SourceOperationResult<ReadManagedTextAssetReceipt>;
+export type DeleteManagedAssetResult = SourceOperationResult<DeleteManagedAssetReceipt>;
 
 export interface SourceCancellationResult {
   cancelled: boolean;

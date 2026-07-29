@@ -63,6 +63,24 @@ export async function getSourceAssociationsBySource(sourceId: string): Promise<S
   }
 }
 
+export async function getSourceAssociationsForUser(
+  sourceId: string,
+  userId: string,
+): Promise<SourceAssociation[]> {
+  try {
+    const source = await db.study_sources.get(sourceId);
+    if (!source) throw new NotFoundError('StudySource', sourceId);
+    if (source.userId !== userId) throw new Error('Source user mismatch');
+    return (await db.source_associations.where('sourceId').equals(sourceId).toArray())
+      .filter((association) => association.userId === userId);
+  } catch (err) {
+    logger.error('Failed to fetch source associations for user', err);
+    throw err instanceof NotFoundError
+      ? err
+      : new StorageError('getSourceAssociationsForUser', err);
+  }
+}
+
 export async function getSourceAssociationsByTarget(targetType: SourceAssociationTargetType, targetId: string): Promise<SourceAssociation[]> {
   try {
     return await db.source_associations
@@ -94,6 +112,61 @@ export async function deleteSourceAssociation(sourceId: string, targetType: Sour
   } catch (err) {
     logger.error('Failed to delete source association', err);
     throw err instanceof NotFoundError ? err : new StorageError('deleteSourceAssociation', err);
+  }
+}
+
+export async function deleteSourceAssociationForUser(
+  sourceId: string,
+  userId: string,
+  targetType: SourceAssociationTargetType,
+  targetId: string,
+): Promise<void> {
+  try {
+    const source = await db.study_sources.get(sourceId);
+    if (!source) throw new NotFoundError('StudySource', sourceId);
+    if (source.userId !== userId) throw new Error('Source user mismatch');
+    const association = await db.source_associations
+      .where('[sourceId+targetType+targetId]')
+      .equals([sourceId, targetType, targetId])
+      .first();
+    if (!association) {
+      throw new NotFoundError('SourceAssociation', `${sourceId}-${targetType}-${targetId}`);
+    }
+    if (association.userId !== userId) throw new Error('Association user mismatch');
+    await db.source_associations.delete(association.id);
+  } catch (err) {
+    logger.error('Failed to delete source association for user', err);
+    throw err instanceof NotFoundError
+      ? err
+      : new StorageError('deleteSourceAssociationForUser', err);
+  }
+}
+
+export async function updateSourceAssociationType(
+  sourceId: string,
+  userId: string,
+  targetType: SourceAssociationTargetType,
+  targetId: string,
+  associationType: SourceAssociationType,
+): Promise<void> {
+  try {
+    const source = await db.study_sources.get(sourceId);
+    if (!source) throw new NotFoundError('StudySource', sourceId);
+    if (source.userId !== userId) throw new Error('Source user mismatch');
+    const association = await db.source_associations
+      .where('[sourceId+targetType+targetId]')
+      .equals([sourceId, targetType, targetId])
+      .first();
+    if (!association) {
+      throw new NotFoundError('SourceAssociation', `${sourceId}-${targetType}-${targetId}`);
+    }
+    if (association.userId !== userId) throw new Error('Association user mismatch');
+    await db.source_associations.update(association.id, { associationType });
+  } catch (err) {
+    logger.error('Failed to update source association type', err);
+    throw err instanceof NotFoundError
+      ? err
+      : new StorageError('updateSourceAssociationType', err);
   }
 }
 

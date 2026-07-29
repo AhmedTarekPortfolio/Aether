@@ -1,22 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { FileSearch, FileUp, Search } from 'lucide-react';
-import type { Note, Subject, Task, Topic } from '../types';
+import type { Note, SourceStatus, Subject, Task, Topic } from '../types';
 import {
+  archiveSource,
   discardIncompleteSource,
   getSourceLibraryEntries,
+  getSourcePurgePreview,
+  moveSourceToTrash,
+  purgeSourcePermanently,
   recoverInterruptedTextImports,
   recoverInterruptedPdfImports,
+  recoverInterruptedSourcePurges,
+  restoreSourceFromTrash,
   retryTextImport,
   retryPdfImport,
   searchImportedSources,
   SourceImportError,
+  SourceLifecycleError,
   type SourceImportResult,
   type SourceLibraryEntry,
+  type SourcePurgePreview,
   type SourceSearchResult,
+  unarchiveSource,
 } from '../services/sources';
+import { SourceAssociationEditor } from '../components/sources/SourceAssociationEditor';
 import { SourceImportDialog } from '../components/sources/SourceImportDialog';
 import { SourceList } from '../components/sources/SourceList';
+import { SourcePurgeDialog } from '../components/sources/SourcePurgeDialog';
 import { SourceReader } from '../components/sources/SourceReader';
 import { Button } from '../components/ui/Button';
 
@@ -37,6 +48,11 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SourceSearchResult[]>([]);
   const [message, setMessage] = useState('');
+  const [lifecycleStatus, setLifecycleStatus] = useState<Exclude<SourceStatus, 'purged'>>('active');
+  const [busySourceId, setBusySourceId] = useState<string | null>(null);
+  const [purgePreview, setPurgePreview] = useState<SourcePurgePreview | null>(null);
+  const [purgeError, setPurgeError] = useState('');
+  const [associationEntry, setAssociationEntry] = useState<SourceLibraryEntry | null>(null);
   const recoveryStarted = useRef(false);
 
   useEffect(() => {
@@ -49,23 +65,35 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
     Promise.all([
       recoverInterruptedTextImports(userId),
       recoverInterruptedPdfImports(userId),
+      recoverInterruptedSourcePurges(userId),
     ])
-      .then(([textResults, pdfResults]) => {
+      .then(([textResults, pdfResults, purgeResults]) => {
         const results = [...textResults, ...pdfResults];
-        if (results.length) {
+        if (results.length || purgeResults.length) {
           const recovered = results.filter((result) => result.recovered).length;
-          setMessage(`Checked ${results.length} interrupted import${results.length === 1 ? '' : 's'}; ${recovered} recovered.`);
+          const purgesRecovered = purgeResults.filter((result) => result.recovered).length;
+          setMessage(
+            `Recovery checked ${results.length} interrupted import${results.length === 1 ? '' : 's'}`
+            + ` and ${purgeResults.length} interrupted purge${purgeResults.length === 1 ? '' : 's'};`
+            + ` ${recovered + purgesRecovered} recovered.`,
+          );
           setRefreshGeneration((value) => value + 1);
         }
       })
-      .catch(() => setMessage('Interrupted imports could not be checked.'));
+      .catch(() => setMessage('Interrupted source operations could not be checked.'));
   }, [userId]);
 
   const entries = useLiveQuery(
-    () => getSourceLibraryEntries(userId, subjectId || undefined),
-    [userId, subjectId, refreshGeneration],
+    () => getSourceLibraryEntries(userId, subjectId || undefined, lifecycleStatus),
+    [userId, subjectId, lifecycleStatus, refreshGeneration],
     [],
   );
+
+  useEffect(() => {
+    if (!associationEntry) return;
+    const updated = entries.find((entry) => entry.source.id === associationEntry.source.id);
+    if (updated && updated !== associationEntry) setAssociationEntry(updated);
+  }, [associationEntry, entries]);
 
   function completed(result: SourceImportResult) {
     setMessage(`${result.displayTitle} is ready and searchable locally.`);
@@ -108,7 +136,7 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
 
   async function runSearch(event: React.FormEvent) {
     event.preventDefault();
-    if (!subjectId || !query.trim()) {
+    if (lifecycleStatus !== 'active' || !subjectId || !query.trim()) {
       setSearchResults([]);
       return;
     }
@@ -124,11 +152,65 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
 
   async function openSearchResult(result: SourceSearchResult) {
     const entry = entries.find((candidate) => candidate.source.id === result.source.id)
-      ?? (await getSourceLibraryEntries(userId, subjectId))
+      ?? (await getSourceLibraryEntries(userId, subjectId, 'active'))
         .find((candidate) => candidate.source.id === result.source.id);
     if (entry) {
       setReaderInitialPage(result.locator.physicalPage ?? 1);
       setReaderEntry(entry);
+    }
+  }
+
+  function lifecycleFailure(error: unknown): string {
+    return error instanceof SourceLifecycleError
+      ? error.message
+      : 'The source lifecycle action could not be completed safely.';
+  }
+
+  async function runLifecycleAction(
+    entry: SourceLibraryEntry,
+    action: () => Promise<unknown>,
+    successMessage: string,
+  ) {
+    setBusySourceId(entry.source.id);
+    setMessage('');
+    try {
+      await action();
+      if (readerEntry?.source.id === entry.source.id) setReaderEntry(null);
+      setMessage(successMessage);
+      setRefreshGeneration((value) => value + 1);
+    } catch (error) {
+      setMessage(lifecycleFailure(error));
+    } finally {
+      setBusySourceId(null);
+    }
+  }
+
+  async function preparePurge(entry: SourceLibraryEntry) {
+    setBusySourceId(entry.source.id);
+    setPurgeError('');
+    try {
+      setPurgePreview(await getSourcePurgePreview(entry.source.id, userId));
+    } catch (error) {
+      setMessage(lifecycleFailure(error));
+    } finally {
+      setBusySourceId(null);
+    }
+  }
+
+  async function confirmPurge() {
+    if (!purgePreview) return;
+    setBusySourceId(purgePreview.sourceId);
+    setPurgeError('');
+    try {
+      await purgeSourcePermanently(purgePreview.sourceId, userId, { confirmed: true });
+      if (readerEntry?.source.id === purgePreview.sourceId) setReaderEntry(null);
+      setMessage('The source was permanently deleted. Historical grounding snapshots were preserved.');
+      setPurgePreview(null);
+      setRefreshGeneration((value) => value + 1);
+    } catch (error) {
+      setPurgeError(lifecycleFailure(error));
+    } finally {
+      setBusySourceId(null);
     }
   }
 
@@ -194,12 +276,39 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
             type="submit"
             variant="secondary"
             icon={<Search className="h-4 w-4" />}
-            disabled={!subjectId || !query.trim()}
+            disabled={lifecycleStatus !== 'active' || !subjectId || !query.trim()}
           >
             Search
           </Button>
         </form>
       </section>
+
+      <nav className="flex flex-wrap gap-2" aria-label="Source lifecycle views">
+        {([
+          ['active', 'Active'],
+          ['archived', 'Archived'],
+          ['trashed', 'Trash'],
+        ] as const).map(([status, label]) => (
+          <Button
+            key={status}
+            type="button"
+            variant={lifecycleStatus === status ? 'primary' : 'secondary'}
+            aria-pressed={lifecycleStatus === status}
+            onClick={() => {
+              setLifecycleStatus(status);
+              setSearchResults([]);
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </nav>
+
+      {lifecycleStatus !== 'active' && (
+        <p className="text-sm text-[var(--text-secondary)]">
+          Local search stays limited to active sources. Restore a source before searching it.
+        </p>
+      )}
 
       {message && <p role="status" className="text-sm text-[var(--text-secondary)]">{message}</p>}
 
@@ -229,15 +338,43 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Imported sources</h2>
+        <h2 className="text-lg font-semibold">
+          {lifecycleStatus === 'active' ? 'Active sources' : lifecycleStatus === 'archived' ? 'Archived sources' : 'Trash'}
+        </h2>
         <SourceList
           entries={entries}
+          status={lifecycleStatus}
+          busySourceId={busySourceId}
           onOpen={(entry) => {
             setReaderInitialPage(1);
             setReaderEntry(entry);
           }}
           onRetry={retry}
           onDiscard={discard}
+          onManageAssociations={setAssociationEntry}
+          onArchive={(entry) => void runLifecycleAction(
+            entry,
+            () => archiveSource(entry.source.id, userId),
+            'The source was archived.',
+          )}
+          onUnarchive={(entry) => void runLifecycleAction(
+            entry,
+            () => unarchiveSource(entry.source.id, userId),
+            'The source was restored to Active.',
+          )}
+          onTrash={(entry) => void runLifecycleAction(
+            entry,
+            () => moveSourceToTrash(entry.source.id, userId),
+            'The source was moved to Trash.',
+          )}
+          onRestore={(entry) => void runLifecycleAction(
+            entry,
+            () => restoreSourceFromTrash(entry.source.id, userId),
+            entry.source.archivedAt === null
+              ? 'The source was restored to Active.'
+              : 'The source was restored to Archived.',
+          )}
+          onPurge={(entry) => void preparePurge(entry)}
         />
       </section>
 
@@ -256,6 +393,26 @@ export function SourcesView({ userId, subjects, topics, tasks, notes }: SourcesV
         entry={readerEntry}
         initialPage={readerInitialPage}
         onClose={() => setReaderEntry(null)}
+      />
+      <SourceAssociationEditor
+        entry={associationEntry}
+        userId={userId}
+        subjects={subjects}
+        topics={topics}
+        tasks={tasks}
+        notes={notes}
+        onClose={() => setAssociationEntry(null)}
+        onChanged={() => setRefreshGeneration((value) => value + 1)}
+      />
+      <SourcePurgeDialog
+        preview={purgePreview}
+        busy={Boolean(purgePreview && busySourceId === purgePreview.sourceId)}
+        error={purgeError}
+        onClose={() => {
+          setPurgePreview(null);
+          setPurgeError('');
+        }}
+        onConfirm={() => void confirmPurge()}
       />
     </div>
   );

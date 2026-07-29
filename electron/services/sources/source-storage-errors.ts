@@ -20,6 +20,7 @@ const SAFE_MESSAGES: Record<SourceStorageErrorCode, string> = {
   ASSET_PATH_CONFLICT: 'A conflicting managed asset already exists.',
   MANAGED_ASSET_NOT_FOUND: 'The managed text asset is no longer available.',
   MANAGED_ASSET_IDENTITY_MISMATCH: 'The managed text asset failed identity verification.',
+  MANAGED_ASSET_DELETE_FAILED: 'The managed asset could not be deleted safely. The purge can be retried.',
   INVALID_TEXT_ENCODING: 'The managed text asset is not valid UTF-8.',
   INVALID_TEXT_CONTENT: 'The managed text asset contains unsupported binary content.',
   OPERATION_CANCELLED: 'The source-storage operation was cancelled.',

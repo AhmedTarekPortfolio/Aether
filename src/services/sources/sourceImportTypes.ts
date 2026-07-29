@@ -86,6 +86,7 @@ const SAFE_IMPORT_MESSAGES: Record<SourceImportErrorCode, string> = {
   ASSET_PATH_CONFLICT: 'A conflicting managed asset was detected.',
   MANAGED_ASSET_NOT_FOUND: 'The managed text asset is missing.',
   MANAGED_ASSET_IDENTITY_MISMATCH: 'The managed text asset failed its integrity check.',
+  MANAGED_ASSET_DELETE_FAILED: 'The managed asset could not be deleted safely. Try the purge again.',
   INVALID_TEXT_ENCODING: 'The file is not valid UTF-8 text.',
   INVALID_TEXT_CONTENT: 'The file contains unsupported binary content.',
   OPERATION_CANCELLED: 'The source import was cancelled.',

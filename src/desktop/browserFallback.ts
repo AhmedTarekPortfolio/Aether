@@ -7,6 +7,7 @@ import {
 import { CredentialStatus } from '../services/ai/aetherTransport';
 import type {
   AssetFinalisationResult,
+  DeleteManagedAssetResult,
   ReadManagedTextAssetResult,
   SourceStageOperationResult,
 } from '../../electron/types/source-storage';
@@ -45,6 +46,16 @@ export const browserFallback = {
       error: {
         code: 'DESKTOP_CAPABILITY_UNAVAILABLE',
         message: 'Managed source storage is available only in the desktop application.',
+      },
+    };
+  },
+
+  async deleteManagedSourceAsset(): Promise<DeleteManagedAssetResult> {
+    return {
+      ok: false,
+      error: {
+        code: 'DESKTOP_CAPABILITY_UNAVAILABLE',
+        message: 'Managed source deletion is available only in the desktop application.',
       },
     };
   },

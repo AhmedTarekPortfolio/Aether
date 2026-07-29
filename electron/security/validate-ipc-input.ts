@@ -150,3 +150,37 @@ export function validateReadManagedTextAssetRequest(
     && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')
     && /^[a-f0-9]{64}$/.test(input.expectedContentHash);
 }
+
+export function validateDeleteManagedAssetRequest(
+  input: unknown,
+): input is import('../types/source-storage.js').DeleteManagedAssetRequest {
+  if (!isStrictObject(input, [
+    'relativePath',
+    'expectedContentHash',
+    'expectedMimeType',
+    'expectedExtension',
+    'expectedByteSize',
+  ])) return false;
+  if (
+    typeof input.relativePath !== 'string'
+    || typeof input.expectedContentHash !== 'string'
+    || typeof input.expectedMimeType !== 'string'
+    || typeof input.expectedExtension !== 'string'
+    || typeof input.expectedByteSize !== 'number'
+  ) return false;
+  const segments = input.relativePath.split('/');
+  return input.relativePath.length > 0
+    && input.relativePath.length <= 256
+    && input.relativePath.startsWith('assets/')
+    && !input.relativePath.includes('\\')
+    && !input.relativePath.includes(':')
+    && !input.relativePath.includes('\0')
+    && !input.relativePath.startsWith('/')
+    && segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+    && /^[a-f0-9]{64}$/.test(input.expectedContentHash)
+    && /^[a-z0-9]+$/.test(input.expectedExtension)
+    && input.expectedMimeType.length > 0
+    && input.expectedMimeType.length <= 100
+    && Number.isSafeInteger(input.expectedByteSize)
+    && input.expectedByteSize >= 0;
+}

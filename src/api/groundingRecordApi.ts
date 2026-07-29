@@ -1,4 +1,4 @@
-import { db } from '../db/database';
+import { db, type AetherDatabase } from '../db/database';
 import { AIGroundingRecord } from '../types';
 import { logger } from '../services/logger';
 import { StorageError } from './errors';
@@ -139,5 +139,45 @@ export async function getAIGroundingRecordsBySource(sourceId: string): Promise<A
   } catch (err) {
     logger.error('Failed to fetch AI grounding records by source', err);
     throw new StorageError('getAIGroundingRecordsBySource', err);
+  }
+}
+
+export async function resolveGroundingSourceNavigation(
+  recordId: string,
+  userId: string,
+  database: AetherDatabase = db,
+): Promise<{ available: boolean; label: string; sourceId: string | null }> {
+  try {
+    const record = await database.ai_grounding_records.get(recordId);
+    if (!record) return { available: false, label: 'Source deleted', sourceId: null };
+    if (record.userId !== userId) throw new Error('Grounding record user mismatch');
+    if (!record.sourceId || !record.sourceVersionId || !record.segmentId) {
+      return { available: false, label: 'Source deleted', sourceId: record.sourceId };
+    }
+    const [source, version, segment] = await Promise.all([
+      database.study_sources.get(record.sourceId),
+      database.source_versions.get(record.sourceVersionId),
+      database.source_segments.get(record.segmentId),
+    ]);
+    const available = Boolean(
+      source
+      && source.userId === userId
+      && source.status !== 'purged'
+      && version
+      && version.userId === userId
+      && version.sourceId === source.id
+      && segment
+      && segment.userId === userId
+      && segment.sourceId === source.id
+      && segment.sourceVersionId === version.id,
+    );
+    return {
+      available,
+      label: available ? record.displayTitle : 'Source deleted',
+      sourceId: record.sourceId,
+    };
+  } catch (err) {
+    logger.error('Failed to resolve grounding source navigation', err);
+    throw new StorageError('resolveGroundingSourceNavigation', err);
   }
 }

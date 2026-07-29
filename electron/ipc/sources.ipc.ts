@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import {
   validateAssetFinalisationRequest,
+  validateDeleteManagedAssetRequest,
   validateReadManagedTextAssetRequest,
   validateSourceFileSelectionRequest,
   validateStagingToken,
@@ -14,6 +15,7 @@ import { IPCChannel } from '../types/ipc-contracts.js';
 import type {
   AssetFinalisationRequest,
   AssetFinalisationResult,
+  DeleteManagedAssetResult,
   ReadManagedTextAssetResult,
   SourceFileSelectionRequest,
   SourceStageOperationResult,
@@ -73,6 +75,23 @@ export function registerSourcesIPCHandlers(window: BrowserWindow): void {
         return {
           ok: true,
           value: await getSourceStorageService().readTextAsset(input),
+        };
+      } catch (error) {
+        return sourceOperationFailure(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPCChannel.SOURCES_DELETE_MANAGED_ASSET,
+    async (event, input: unknown): Promise<DeleteManagedAssetResult> => {
+      if (!trustedSender(window, event) || !validateDeleteManagedAssetRequest(input)) {
+        return sourceOperationFailure(new SourceStorageError('INVALID_REQUEST'));
+      }
+      try {
+        return {
+          ok: true,
+          value: await getSourceStorageService().deleteManagedAsset(input),
         };
       } catch (error) {
         return sourceOperationFailure(error);

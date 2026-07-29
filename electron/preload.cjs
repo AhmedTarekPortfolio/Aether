@@ -19,6 +19,7 @@ const IPCChannel = {
   SOURCES_SELECT_AND_STAGE: 'aether:sources:select-and-stage',
   SOURCES_FINALISE: 'aether:sources:finalise',
   SOURCES_READ_TEXT_ASSET: 'aether:sources:read-text-asset',
+  SOURCES_DELETE_MANAGED_ASSET: 'aether:sources:delete-managed-asset',
   SOURCES_CANCEL: 'aether:sources:cancel',
   SOURCES_RECONCILE: 'aether:sources:reconcile',
   SOURCES_GET_CAPABILITIES: 'aether:sources:get-capabilities',
@@ -109,6 +110,9 @@ const aetherDesktopAPI = {
     },
     readTextAsset(request) {
       return ipcRenderer.invoke(IPCChannel.SOURCES_READ_TEXT_ASSET, request);
+    },
+    deleteManagedAsset(request) {
+      return ipcRenderer.invoke(IPCChannel.SOURCES_DELETE_MANAGED_ASSET, request);
     },
     cancel(stagingToken) {
       return ipcRenderer.invoke(IPCChannel.SOURCES_CANCEL, stagingToken);

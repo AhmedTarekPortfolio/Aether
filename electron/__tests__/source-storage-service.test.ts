@@ -185,6 +185,75 @@ describe('managed source storage service', () => {
     })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
   });
 
+  it('deletes an independently verified managed asset without exposing its absolute path', async () => {
+    const userData = await temporaryDirectory();
+    const service = createService(userData);
+    await service.initialize();
+    const content = Buffer.from('delete me safely');
+    const identity = await writeManagedAsset(userData, 'txt', content);
+    const request = {
+      relativePath: identity.relativePath,
+      expectedContentHash: identity.contentHash,
+      expectedMimeType: 'text/plain',
+      expectedExtension: 'txt',
+      expectedByteSize: content.byteLength,
+    };
+
+    const result = await service.deleteManagedAsset(request);
+    expect(result).toEqual({ deleted: true, alreadyMissing: false });
+    await expect(fs.lstat(path.join(userData, 'sources', ...identity.relativePath.split('/'))))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    assertNoAbsolutePaths(result, userData);
+    await expect(service.deleteManagedAsset(request)).resolves.toEqual({
+      deleted: false,
+      alreadyMissing: true,
+    });
+  });
+
+  it('rejects false asset identities before deletion', async () => {
+    const userData = await temporaryDirectory();
+    const service = createService(userData);
+    await service.initialize();
+    const content = Buffer.from('%PDF-1.7\nbody');
+    const identity = await writeManagedAsset(userData, 'pdf', content);
+    const pathname = path.join(userData, 'sources', ...identity.relativePath.split('/'));
+
+    await expect(service.deleteManagedAsset({
+      relativePath: identity.relativePath,
+      expectedContentHash: identity.contentHash,
+      expectedMimeType: 'text/plain',
+      expectedExtension: 'pdf',
+      expectedByteSize: content.byteLength,
+    })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(fs.readFile(pathname)).resolves.toEqual(content);
+  });
+
+  it('uses bounded retries for locked managed assets and returns a recoverable safe error', async () => {
+    const userData = await temporaryDirectory();
+    const content = Buffer.from('locked file');
+    const identity = await writeManagedAsset(userData, 'txt', content);
+    const unlinkFile = vi.fn().mockRejectedValue(
+      Object.assign(new Error(`EPERM ${userData}`), { code: 'EPERM' }),
+    );
+    const service = createService(userData, [], { unlinkFile });
+    await service.initialize();
+
+    await expect(service.deleteManagedAsset({
+      relativePath: identity.relativePath,
+      expectedContentHash: identity.contentHash,
+      expectedMimeType: 'text/plain',
+      expectedExtension: 'txt',
+      expectedByteSize: content.byteLength,
+    })).rejects.toMatchObject({
+      code: 'MANAGED_ASSET_DELETE_FAILED',
+      message: 'The managed asset could not be deleted safely. The purge can be retried.',
+    });
+    expect(unlinkFile).toHaveBeenCalledTimes(3);
+    await expect(fs.readFile(
+      path.join(userData, 'sources', ...identity.relativePath.split('/')),
+    )).resolves.toEqual(content);
+  });
+
   it('rejects invalid UTF-8 and binary managed text content', async () => {
     const userData = await temporaryDirectory();
     const service = createService(userData);

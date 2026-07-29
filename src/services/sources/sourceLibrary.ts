@@ -4,6 +4,7 @@ import type {
   SourceAsset,
   SourceJob,
   SourceSegment,
+  SourceStatus,
   SourceVersion,
   StudySource,
 } from '../../types';
@@ -50,11 +51,12 @@ async function associationLabel(
 export async function getSourceLibraryEntries(
   userId: string,
   subjectId?: string,
+  status: Exclude<SourceStatus, 'purged'> = 'active',
   database: AetherDatabase = db,
 ): Promise<SourceLibraryEntry[]> {
   let sources = (await database.study_sources.where('userId').equals(userId).toArray())
     .filter((source) =>
-      source.status === 'active'
+      source.status === status
       && (source.sourceType === 'txt'
         || source.sourceType === 'markdown'
         || source.sourceType === 'pdf'

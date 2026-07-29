@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     selectAndStage: vi.fn(),
     finalise: vi.fn(),
     readTextAsset: vi.fn(),
+    deleteManagedAsset: vi.fn(),
     cancel: vi.fn(),
     reconcile: vi.fn(),
     getCapabilities: vi.fn(),
@@ -65,6 +66,7 @@ describe('source-storage IPC handlers', () => {
       IPCChannel.SOURCES_FINALISE,
       IPCChannel.SOURCES_GET_CAPABILITIES,
       IPCChannel.SOURCES_READ_TEXT_ASSET,
+      IPCChannel.SOURCES_DELETE_MANAGED_ASSET,
       IPCChannel.SOURCES_RECONCILE,
       IPCChannel.SOURCES_SELECT_AND_STAGE,
       IPCChannel.SOURCES_PDF_EXTRACT,
@@ -97,6 +99,42 @@ describe('source-storage IPC handlers', () => {
       ok: true,
       value: { text: 'safe', byteSize: 4 },
     });
+  });
+
+  it('accepts only narrow managed-asset deletion identities', async () => {
+    const handler = mocks.handlers.get(IPCChannel.SOURCES_DELETE_MANAGED_ASSET)!;
+    const event = {
+      sender: {
+        id: 7,
+        isDestroyed: () => false,
+      },
+    };
+    const invalid = {
+      relativePath: 'C:\\private.txt',
+      expectedContentHash: 'a'.repeat(64),
+      expectedMimeType: 'text/plain',
+      expectedExtension: 'txt',
+      expectedByteSize: 4,
+    };
+    await expect(handler(event, invalid)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(mocks.service.deleteManagedAsset).not.toHaveBeenCalled();
+
+    const request = {
+      ...invalid,
+      relativePath: `assets/aa/${'a'.repeat(64)}.txt`,
+    };
+    mocks.service.deleteManagedAsset.mockResolvedValue({
+      deleted: true,
+      alreadyMissing: false,
+    });
+    await expect(handler(event, request)).resolves.toEqual({
+      ok: true,
+      value: { deleted: true, alreadyMissing: false },
+    });
+    expect(mocks.service.deleteManagedAsset).toHaveBeenCalledWith(request);
   });
 
   it('rejects invalid selection before the native dialog service is reached', async () => {

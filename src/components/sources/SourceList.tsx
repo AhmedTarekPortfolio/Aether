@@ -1,4 +1,14 @@
-import { AlertCircle, FileText, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  AlertCircle,
+  Archive,
+  ArchiveRestore,
+  FileText,
+  Link2,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react';
+import type { SourceStatus } from '../../types';
 import type { SourceLibraryEntry } from '../../services/sources';
 import { Button } from '../ui/Button';
 
@@ -7,6 +17,14 @@ interface SourceListProps {
   onOpen: (entry: SourceLibraryEntry) => void;
   onRetry: (entry: SourceLibraryEntry) => void;
   onDiscard: (entry: SourceLibraryEntry) => void;
+  onArchive?: (entry: SourceLibraryEntry) => void;
+  onUnarchive?: (entry: SourceLibraryEntry) => void;
+  onTrash?: (entry: SourceLibraryEntry) => void;
+  onRestore?: (entry: SourceLibraryEntry) => void;
+  onPurge?: (entry: SourceLibraryEntry) => void;
+  onManageAssociations?: (entry: SourceLibraryEntry) => void;
+  status?: Exclude<SourceStatus, 'purged'>;
+  busySourceId?: string | null;
 }
 
 function formatBytes(bytes: number | undefined): string {
@@ -16,14 +34,32 @@ function formatBytes(bytes: number | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListProps) {
+export function SourceList({
+  entries,
+  onOpen,
+  onRetry,
+  onDiscard,
+  onArchive,
+  onUnarchive,
+  onTrash,
+  onRestore,
+  onPurge,
+  onManageAssociations,
+  status = 'active',
+  busySourceId,
+}: SourceListProps) {
   if (entries.length === 0) {
+    const emptyCopy = status === 'archived'
+      ? ['No archived sources', 'Archived sources remain available here until restored or moved to trash.']
+      : status === 'trashed'
+        ? ['Trash is empty', 'Sources moved to trash remain recoverable until you permanently delete them.']
+        : ['No imported local sources yet', 'Import TXT, Markdown, PDF, or pasted text to build your local source library.'];
     return (
       <div className="rounded-2xl border border-dashed border-[var(--border-glass-hover)] p-10 text-center">
         <FileText className="mx-auto mb-3 h-8 w-8 text-[var(--text-muted)]" />
-        <p className="font-medium text-[var(--text-primary)]">No imported local sources yet</p>
+        <p className="font-medium text-[var(--text-primary)]">{emptyCopy[0]}</p>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          Import TXT, Markdown, PDF, or pasted text to build your local source library.
+          {emptyCopy[1]}
         </p>
       </div>
     );
@@ -32,6 +68,7 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
   return (
     <div className="grid gap-4 lg:grid-cols-2" aria-label="Imported sources">
       {entries.map((entry) => {
+        const busy = busySourceId === entry.source.id;
         const ready = (
           entry.version?.status === 'ready'
           || entry.version?.status === 'partially_ready'
@@ -60,6 +97,8 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
                       : entry.source.sourceType === 'pdf' ? 'PDF' : 'TXT'}
                   {' • '}
                   {entry.version?.status ?? 'pending'}
+                  {' • '}
+                  {entry.source.status}
                 </p>
               </div>
               {!ready && <AlertCircle className="h-5 w-5 text-[var(--accent-amber)]" />}
@@ -104,12 +143,13 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
 
             <div className="mt-4 flex flex-wrap gap-2">
               {ready ? (
-                <Button size="sm" onClick={() => onOpen(entry)}>Open source</Button>
+                <Button size="sm" disabled={busy} onClick={() => onOpen(entry)}>Open source</Button>
               ) : (
                 <>
                   <Button
                     size="sm"
                     variant="secondary"
+                    disabled={busy}
                     icon={<RefreshCw className="h-3.5 w-3.5" />}
                     onClick={() => onRetry(entry)}
                   >
@@ -118,12 +158,79 @@ export function SourceList({ entries, onOpen, onRetry, onDiscard }: SourceListPr
                   <Button
                     size="sm"
                     variant="danger"
+                    disabled={busy}
                     icon={<Trash2 className="h-3.5 w-3.5" />}
                     onClick={() => onDiscard(entry)}
                   >
                     Discard failed import
                   </Button>
                 </>
+              )}
+              {entry.source.status !== 'trashed' && onManageAssociations && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  icon={<Link2 className="h-3.5 w-3.5" />}
+                  onClick={() => onManageAssociations(entry)}
+                >
+                  Manage links
+                </Button>
+              )}
+              {entry.source.status === 'active' && onArchive && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  icon={<Archive className="h-3.5 w-3.5" />}
+                  onClick={() => onArchive(entry)}
+                >
+                  Archive
+                </Button>
+              )}
+              {entry.source.status === 'archived' && onUnarchive && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  icon={<ArchiveRestore className="h-3.5 w-3.5" />}
+                  onClick={() => onUnarchive(entry)}
+                >
+                  Restore to active
+                </Button>
+              )}
+              {(entry.source.status === 'active' || entry.source.status === 'archived') && onTrash && (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={busy}
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  onClick={() => onTrash(entry)}
+                >
+                  Move to trash
+                </Button>
+              )}
+              {entry.source.status === 'trashed' && onRestore && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  icon={<RotateCcw className="h-3.5 w-3.5" />}
+                  onClick={() => onRestore(entry)}
+                >
+                  Restore
+                </Button>
+              )}
+              {entry.source.status === 'trashed' && onPurge && (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={busy}
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  onClick={() => onPurge(entry)}
+                >
+                  Permanently delete
+                </Button>
               )}
             </div>
           </article>

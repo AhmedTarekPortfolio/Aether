@@ -9,6 +9,8 @@ import {
   SOURCE_FILE_SIZE_LIMITS,
   SOURCE_MAXIMUM_FILE_COUNT,
   type AssetFinalisationReceipt,
+  type DeleteManagedAssetReceipt,
+  type DeleteManagedAssetRequest,
   type ReadManagedTextAssetReceipt,
   type ReadManagedTextAssetRequest,
   type SourceCancellationResult,
@@ -68,6 +70,7 @@ export interface SourceStorageServiceOptions {
   renameFile?: typeof fs.rename;
   readStreamFactory?: (pathname: string) => Readable;
   writeStreamFactory?: (pathname: string) => Writable;
+  unlinkFile?: typeof fs.unlink;
 }
 
 export interface ActiveStagingOperation {
@@ -116,6 +119,7 @@ export class SourceStorageService {
   private readonly renameFile: typeof fs.rename;
   private readonly readStreamFactory: (pathname: string) => Readable;
   private readonly writeStreamFactory: (pathname: string) => Writable;
+  private readonly unlinkFile: typeof fs.unlink;
 
   constructor(private readonly options: SourceStorageServiceOptions) {
     this.receiptLifetimeMs = options.receiptLifetimeMs ?? DEFAULT_RECEIPT_LIFETIME_MS;
@@ -131,6 +135,7 @@ export class SourceStorageService {
         mode: 0o600,
         flush: true,
       }));
+    this.unlinkFile = options.unlinkFile ?? fs.unlink;
     if (
       !Number.isSafeInteger(this.receiptLifetimeMs)
       || this.receiptLifetimeMs <= 0
@@ -303,6 +308,101 @@ export class SourceStorageService {
         throw new SourceStorageError('MANAGED_ASSET_NOT_FOUND', { cause: error });
       }
       throw error;
+    } finally {
+      await handle?.close().catch(() => {});
+    }
+  }
+
+  public async deleteManagedAsset(
+    request: DeleteManagedAssetRequest,
+  ): Promise<DeleteManagedAssetReceipt> {
+    const paths = this.requirePaths();
+    let type: SupportedSourceFile;
+    try {
+      type = identifySupportedSourceFile(request.relativePath);
+    } catch {
+      throw new SourceStorageError('INVALID_REQUEST');
+    }
+    if (
+      type.extension !== request.expectedExtension
+      || type.mimeType !== request.expectedMimeType
+      || !Number.isSafeInteger(request.expectedByteSize)
+      || request.expectedByteSize < 0
+      || assetRelativePath(request.expectedContentHash, type.extension) !== request.relativePath
+    ) {
+      throw new SourceStorageError('INVALID_REQUEST');
+    }
+
+    const pathname = resolveManagedRelativePath(paths, request.relativePath, 'assets');
+    let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+    try {
+      const [realAssetRoot, realPath, linkStat, shardStat] = await Promise.all([
+        fs.realpath(paths.assets),
+        fs.realpath(pathname),
+        fs.lstat(pathname),
+        fs.lstat(path.dirname(pathname)),
+      ]);
+      const relativeRealPath = path.relative(realAssetRoot, realPath);
+      if (
+        !relativeRealPath
+        || relativeRealPath === '..'
+        || relativeRealPath.startsWith(`..${path.sep}`)
+        || path.isAbsolute(relativeRealPath)
+        || linkStat.isSymbolicLink()
+        || !linkStat.isFile()
+        || shardStat.isSymbolicLink()
+        || !shardStat.isDirectory()
+        || linkStat.size !== request.expectedByteSize
+      ) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+
+      handle = await fs.open(pathname, 'r');
+      const before = await handle.stat();
+      if (!before.isFile() || before.size !== request.expectedByteSize) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+      const sample = Buffer.alloc(Math.min(SIGNATURE_SAMPLE_BYTES, before.size));
+      if (sample.length > 0) await handle.read(sample, 0, sample.length, 0);
+      validateSourceSignature(type, sample);
+      await handle.close();
+      handle = null;
+
+      const facts = await this.hashFile(pathname);
+      const after = await fs.lstat(pathname);
+      if (
+        facts.contentHash !== request.expectedContentHash
+        || facts.byteSize !== request.expectedByteSize
+        || after.isSymbolicLink()
+        || !after.isFile()
+        || after.size !== before.size
+        || after.dev !== before.dev
+        || after.ino !== before.ino
+      ) {
+        throw new SourceStorageError('MANAGED_ASSET_IDENTITY_MISMATCH');
+      }
+
+      await retryFileOperation(() => this.unlinkFile(pathname));
+      return { deleted: true, alreadyMissing: false };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return { deleted: false, alreadyMissing: true };
+      }
+      if (
+        error instanceof SourceStorageError
+        && error.code === 'STAGING_FILE_MISSING'
+      ) {
+        try {
+          await fs.lstat(pathname);
+        } catch (statError) {
+          if ((statError as NodeJS.ErrnoException).code === 'ENOENT') {
+            return { deleted: false, alreadyMissing: true };
+          }
+        }
+        throw new SourceStorageError('MANAGED_ASSET_DELETE_FAILED', { cause: error });
+      }
+      if (error instanceof SourceStorageError) throw error;
+      throw new SourceStorageError('MANAGED_ASSET_DELETE_FAILED', { cause: error });
     } finally {
       await handle?.close().catch(() => {});
     }

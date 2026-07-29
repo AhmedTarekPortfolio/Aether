@@ -22,6 +22,9 @@ import {
   addStudySource,
   getAIGroundingRecordsByConversation,
   getSourceAssetByHash,
+  getSourceAssociationsForUser,
+  deleteSourceAssociationForUser,
+  updateSourceAssociationType,
   updateSourceVersion,
   updateStudySource,
 } from '..';
@@ -232,6 +235,61 @@ describe('WP-LOCAL-01 source repositories', () => {
       associationType: 'reference',
       createdAt: now,
     })).rejects.toThrow(/user mismatch/i);
+  });
+
+  it('manages association types and deletion through user-scoped operations', async () => {
+    await db.subjects.bulkAdd([
+      {
+        id: 'subject-a',
+        userId: 'user-a',
+        name: 'Subject A',
+        color: '#000000',
+        confidenceRating: 50,
+        createdAt: now,
+      },
+      {
+        id: 'subject-b',
+        userId: 'user-b',
+        name: 'Subject B',
+        color: '#ffffff',
+        confidenceRating: 50,
+        createdAt: now,
+      },
+    ]);
+    await addStudySource(source('source-a'));
+    await addSourceAssociation({
+      id: 'association-managed',
+      userId: 'user-a',
+      sourceId: 'source-a',
+      targetType: 'subject',
+      targetId: 'subject-a',
+      associationType: 'primary',
+      createdAt: now,
+    });
+
+    await updateSourceAssociationType(
+      'source-a',
+      'user-a',
+      'subject',
+      'subject-a',
+      'supplementary',
+    );
+    expect(await getSourceAssociationsForUser('source-a', 'user-a')).toMatchObject([
+      { id: 'association-managed', associationType: 'supplementary' },
+    ]);
+    await expect(deleteSourceAssociationForUser(
+      'source-a',
+      'user-b',
+      'subject',
+      'subject-a',
+    )).rejects.toThrow(/user mismatch/i);
+    await deleteSourceAssociationForUser(
+      'source-a',
+      'user-a',
+      'subject',
+      'subject-a',
+    );
+    expect(await getSourceAssociationsForUser('source-a', 'user-a')).toEqual([]);
   });
 
   it('validates chunk lineage and makes bulk insertion atomic', async () => {
