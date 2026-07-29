@@ -87,6 +87,36 @@ describe('production PDF request and output validation', () => {
       errorCode: 'PDF_CORRUPT',
       errorMessage: 'C:\\Users\\private\\lesson.pdf failed',
     }, request)).toThrow();
+    expect(() => validatePdfUtilityResult({
+      ...validResult(),
+      stack: 'Error: parser failure\n    at parse (parser.js:1:1)',
+    }, request)).toThrow();
+    expect(() => validatePdfUtilityResult({
+      ...validResult(),
+      pages: [{
+        ...validResult().pages[0],
+        parserMetadata: { internalPath: 'hidden' },
+      }],
+    }, request)).toThrow();
+    expect(() => validatePdfUtilityResult({
+      ...validResult(),
+      pages: [{
+        ...validResult().pages[0],
+        boundingBoxes: [{
+          x: 1,
+          y: 2,
+          width: 3,
+          height: 4,
+          parserObjectId: 42,
+        }],
+      }],
+    }, request)).toThrow();
+    expect(() => validatePdfUtilityResult({
+      ...validResult(),
+      status: 'failed',
+      errorCode: 'PDF_CORRUPT',
+      errorMessage: 'Error: parser failure\n    at parseDocument',
+    }, request)).toThrow();
   });
 
   it('preserves Arabic and mixed-language page text as document content', () => {

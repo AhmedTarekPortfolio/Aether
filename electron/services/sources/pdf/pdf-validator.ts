@@ -129,8 +129,17 @@ export function validatePdfUtilityResult(
   value: unknown,
   request: PdfExtractionJobRequest,
 ): PdfExtractionJobResult {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('Invalid result');
-  const result = value as PdfExtractionJobResult;
+  if (!strictObject(value, [
+    'jobId',
+    'status',
+    'pageCount',
+    'pages',
+    'scannedPageCount',
+    'truncated',
+    'errorCode',
+    'errorMessage',
+  ])) fail('Invalid result');
+  const result = value as unknown as PdfExtractionJobResult;
   if (result.jobId !== request.jobId) fail('Job ID mismatch');
   if (!['completed', 'partially_completed', 'failed', 'cancelled'].includes(result.status)) {
     fail('Invalid status');
@@ -159,6 +168,7 @@ export function validatePdfUtilityResult(
       || result.errorMessage.length > 500
       || result.errorMessage.includes('\0')
       || /([a-zA-Z]:\\|\\\\|\/Users\/|\/home\/|file:)/.test(result.errorMessage)
+      || /(^|\n)\s*(?:at\s+\S+|Error(?::|\s*$))/m.test(result.errorMessage)
     )
   ) fail('Invalid error message');
 
@@ -167,7 +177,16 @@ export function validatePdfUtilityResult(
   let scanned = 0;
   for (let index = 0; index < result.pages.length; index += 1) {
     const page = result.pages[index];
-    if (!page || typeof page !== 'object' || Array.isArray(page)) fail('Invalid page');
+    if (!strictObject(page, [
+      'ordinal',
+      'physicalPage',
+      'printedPageLabel',
+      'text',
+      'textHash',
+      'boundingBoxes',
+      'rasterImageCount',
+      'likelyScanned',
+    ])) fail('Invalid page');
     if (page.ordinal !== index + 1 || page.physicalPage !== index + 1) fail('Invalid page ordering');
     if (
       page.printedPageLabel !== null
@@ -187,8 +206,7 @@ export function validatePdfUtilityResult(
     if (boxes > request.options.maxBoundingBoxes) fail('Bounding-box limit exceeded');
     for (const box of page.boundingBoxes) {
       if (
-        !box
-        || typeof box !== 'object'
+        !strictObject(box, ['x', 'y', 'width', 'height'])
         || !Number.isFinite(box.x)
         || !Number.isFinite(box.y)
         || !Number.isFinite(box.width)

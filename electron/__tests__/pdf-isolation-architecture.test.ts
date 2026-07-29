@@ -14,6 +14,20 @@ describe('WP-LOCAL-07 PDF isolation architecture', () => {
     expect(packageJson.dependencies['pdfjs-dist']).toBe('4.10.38');
   });
 
+  it('excludes evaluation and generated legacy packages from the production ASAR', () => {
+    const packageJson = JSON.parse(read('package.json')) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts.package).toContain('--ignore="^/evaluation"');
+    expect(packageJson.scripts.package).toContain('--ignore="^/dist-win"');
+    expect(packageJson.scripts.package).toContain('--ignore="^/dist-desktop"');
+    expect(packageJson.scripts.package).toContain('--ignore="^/release"');
+    expect(packageJson.scripts.dist).toContain('--ignore="^/evaluation"');
+    expect(packageJson.scripts.dist).toContain('--ignore="^/dist-win"');
+    expect(packageJson.scripts.dist).toContain('--ignore="^/dist-desktop"');
+    expect(packageJson.scripts.dist).toContain('--ignore="^/release"');
+  });
+
   it('keeps parsing in the utility entry point with eval disabled and no Dexie imports', () => {
     const host = read('electron/services/sources/pdf/pdf-parser-host.ts');
     const utility = read('electron/services/sources/pdf/pdf-parser-utility.ts');

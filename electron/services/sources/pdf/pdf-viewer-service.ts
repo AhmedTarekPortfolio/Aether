@@ -154,6 +154,7 @@ export class PdfViewerService {
     const headers = new Headers({
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'no-store',
+      'Content-Disposition': 'inline; filename="document.pdf"',
       'Content-Security-Policy': "default-src 'none'; frame-ancestors 'self'",
       'Content-Type': 'application/pdf',
       'X-Content-Type-Options': 'nosniff',

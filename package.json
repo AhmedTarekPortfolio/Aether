@@ -16,8 +16,8 @@
     "build:web": "tsc && vite build",
     "build:electron": "tsc -p tsconfig.electron.json && node -e \"fs.copyFileSync('electron/preload.cjs', 'dist-electron/preload.cjs')\"",
     "build:desktop": "npm run build && npm run build:electron",
-    "package": "rimraf dist-installer && npm run build:desktop && npx electron-packager . Aether --platform=win32 --arch=x64 --out=dist-installer --overwrite",
-    "dist": "rimraf dist-desktop dist-installer && npm run build:desktop && npx electron-packager . Aether --platform=win32 --arch=x64 --out=dist-installer --overwrite && npx electron-builder --prepackaged dist-installer/Aether-win32-x64 --win nsis",
+    "package": "rimraf dist-installer && npm run build:desktop && npx electron-packager . Aether --platform=win32 --arch=x64 --out=dist-installer --overwrite --ignore=\"^/evaluation\" --ignore=\"^/dist-win\" --ignore=\"^/dist-desktop\" --ignore=\"^/release\"",
+    "dist": "rimraf dist-desktop dist-installer && npm run build:desktop && npx electron-packager . Aether --platform=win32 --arch=x64 --out=dist-installer --overwrite --ignore=\"^/evaluation\" --ignore=\"^/dist-win\" --ignore=\"^/dist-desktop\" --ignore=\"^/release\" && npx electron-builder --prepackaged dist-installer/Aether-win32-x64 --win nsis",
     "preview": "vite preview",
     "test": "vitest run"
   },
