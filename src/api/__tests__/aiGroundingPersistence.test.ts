@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { db } from '../../db/database';
 import type { AIGroundingRecord, AIConversation } from '../../types';
-import { addAIConversation } from '../aiConversationApi';
+import { addAIConversation, clearAIConversations } from '../aiConversationApi';
 import { sha256Text } from '../../services/sources/textNormalisation';
 
 describe('WP-LOCAL-05 atomic conversation grounding persistence', () => {
@@ -98,7 +98,7 @@ describe('WP-LOCAL-05 atomic conversation grounding persistence', () => {
 
   it('rolls back the conversation and every grounding row on any grounding failure', async () => {
     const invalid = records();
-    invalid[1] = { ...invalid[1], excerptHash: 'invalid' };
+    invalid[1] = { ...invalid[1], excerptHash: 'a'.repeat(64) };
     await expect(addAIConversation(conversation(), invalid)).rejects.toThrow();
     expect(await db.ai_conversations.count()).toBe(0);
     expect(await db.ai_grounding_records.count()).toBe(0);
@@ -116,5 +116,12 @@ describe('WP-LOCAL-05 atomic conversation grounding persistence', () => {
     await addAIConversation(conversation(), [records()[0]]);
     expect((await db.ai_grounding_records.get('request-1-grounding-1'))?.excerptSnapshot)
       .toBe('exact excerpt');
+  });
+
+  it('clears conversations and their grounding records atomically', async () => {
+    await addAIConversation(conversation(), records());
+    await clearAIConversations();
+    expect(await db.ai_conversations.count()).toBe(0);
+    expect(await db.ai_grounding_records.count()).toBe(0);
   });
 });

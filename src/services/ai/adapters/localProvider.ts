@@ -27,18 +27,33 @@ export class LocalTemplateAdapter implements AIProviderAdapter {
 
     if (mode === 'ask_resources') {
       const systemInstruction = request.normalizedRequest?.systemInstruction ?? '';
-      const evidenceBlock = systemInstruction.match(
-        /BEGIN UNTRUSTED EVIDENCE\n([\s\S]*?)\nEND UNTRUSTED EVIDENCE/,
-      )?.[1] ?? '';
-      const evidence = [...evidenceBlock.matchAll(
-        /EVIDENCE \[((?:R|S)\d+)\]\nType: ([^\n]+)\nTitle: ([^\n]+)\nLocator: ([^\n]+)\nExcerpt:\n([\s\S]*?)\nEND EVIDENCE \[\1\]/g,
-      )].map((match) => ({
-        label: match[1],
-        type: match[2],
-        title: match[3],
-        locator: match[4],
-        excerpt: match[5].trim(),
-      }));
+      const evidenceJson = systemInstruction.match(
+        /BEGIN UNTRUSTED EVIDENCE JSON\n([^\n]*)\nEND UNTRUSTED EVIDENCE JSON/,
+      )?.[1];
+      let evidence: Array<{
+        label: string;
+        type: string;
+        title: string;
+        locator: string;
+        excerpt: string;
+      }> = [];
+      if (evidenceJson) {
+        try {
+          const parsed = JSON.parse(evidenceJson);
+          if (Array.isArray(parsed)) {
+            evidence = parsed.filter((item) =>
+              item
+              && typeof item === 'object'
+              && /^(?:R|S)\d+$/.test(item.label)
+              && typeof item.type === 'string'
+              && typeof item.title === 'string'
+              && typeof item.locator === 'string'
+              && typeof item.excerpt === 'string');
+          }
+        } catch {
+          evidence = [];
+        }
+      }
       const legacySourceBlock = systemInstruction.match(
         /BEGIN UNTRUSTED NOTE SOURCES\n([\s\S]*?)\nEND UNTRUSTED NOTE SOURCES/,
       )?.[1] ?? '';

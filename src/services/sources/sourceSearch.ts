@@ -134,7 +134,7 @@ function isSelectedSegment(
   return true;
 }
 
-function groundingLocator(segment: SourceSegment): string {
+export function groundingLocator(segment: SourceSegment): string {
   if (segment.physicalPage !== null) {
     return `Physical page ${segment.physicalPage}${
       segment.printedPageLabel ? ` (printed label ${segment.printedPageLabel})` : ''
@@ -155,6 +155,8 @@ export async function getSourceGroundingCandidates(
   const normalizedQuery = request.query.trim().toLocaleLowerCase();
   const terms = queryTerms(request.query);
   if (!request.subjectId || !normalizedQuery || terms.length === 0) return [];
+  const subject = await database.subjects.get(request.subjectId);
+  if (!subject || (subject.userId ?? 'default_user') !== request.userId) return [];
   const maximumCandidateSegments = Math.max(1, request.maximumCandidateSegments);
   const associatedSourceIds = new Set(
     (await database.source_associations
@@ -240,6 +242,8 @@ export async function validateSourceGroundingEvidence(
   subjectId: string,
   database: AetherDatabase = db,
 ): Promise<boolean> {
+  const subject = await database.subjects.get(subjectId);
+  if (!subject || (subject.userId ?? 'default_user') !== userId) return false;
   for (const item of evidence) {
     if (
       item.evidenceType !== 'source_segment'
@@ -265,6 +269,11 @@ export async function validateSourceGroundingEvidence(
       || segment.sourceVersionId !== version.id
       || segment.textHash !== item.contentHash
       || await sha256Text(segment.text) !== item.contentHash
+      || item.title !== source.displayName
+      || item.locator !== groundingLocator(segment)
+      || item.sourceType !== source.sourceType
+      || item.physicalPage !== segment.physicalPage
+      || item.printedPageLabel !== segment.printedPageLabel
       || !association || association.userId !== userId
     ) return false;
   }

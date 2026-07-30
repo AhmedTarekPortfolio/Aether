@@ -75,6 +75,24 @@ function matchingWindow(content: string, tokens: string[]): string {
   return `${prefix}${content.slice(start, end).trim()}${suffix}`;
 }
 
+async function noteEvidenceContentHash(note: {
+  userId?: string;
+  subjectId: string;
+  title: string;
+  content: string;
+  tags: string[];
+  updatedAt: number;
+}): Promise<string> {
+  return sha256Text(JSON.stringify({
+    userId: note.userId ?? 'default_user',
+    subjectId: note.subjectId,
+    title: note.title,
+    content: note.content,
+    tags: note.tags,
+    updatedAt: note.updatedAt,
+  }));
+}
+
 export async function performLocalRetrieval(
   query: string,
   options: LocalRetrievalOptions,
@@ -135,7 +153,7 @@ export async function performLocalRetrieval(
         locator: 'Note',
         excerpt,
         excerptHash: await sha256Text(excerpt),
-        contentHash: await sha256Text(note.content),
+        contentHash: await noteEvidenceContentHash(note),
         score,
         order: excerpts.length + 1,
       });
@@ -278,7 +296,9 @@ export async function validatePreparedEvidence(
       !note
       || (note.userId ?? 'default_user') !== userId
       || note.subjectId !== subjectId
-      || await sha256Text(note.content) !== item.contentHash
+      || item.title !== (note.title || 'Untitled Note')
+      || item.locator !== 'Note'
+      || await noteEvidenceContentHash(note) !== item.contentHash
     ) return false;
   }
   const sourceEvidence = evidence.filter((candidate) => candidate.evidenceType === 'source_segment');

@@ -110,6 +110,10 @@ describe('WP-LOCAL-05 imported-source grounding retrieval', () => {
     await db.subjects.add({
       id: 's1', userId: 'u1', name: 'Biology', color: '#fff', confidenceRating: 0, createdAt: 1,
     });
+    await db.subjects.add({
+      id: 'other-subject', userId: 'u2', name: 'Private', color: '#000',
+      confidenceRating: 0, createdAt: 1,
+    });
   });
 
   afterEach(() => db.close());
@@ -143,6 +147,22 @@ describe('WP-LOCAL-05 imported-source grounding retrieval', () => {
       sourceVersionId: 'selected-v1',
       segmentId: 'selected-segment-1',
     });
+
+    await db.source_associations.add({
+      id: 'foreign-subject-association',
+      userId: 'u1',
+      sourceId: 'selected',
+      targetType: 'subject',
+      targetId: 'other-subject',
+      associationType: 'reference',
+      createdAt: 1,
+    });
+    const foreignSubject = await performSourceRetrieval('mitochondria', {
+      userId: 'u1',
+      subjectId: 'other-subject',
+      selections: [{ sourceId: 'selected' }],
+    });
+    expect(foreignSubject).toMatchObject({ status: 'no-evidence', excerpts: [] });
   });
 
   it('applies PDF page and explicit segment restrictions before ranking', async () => {
