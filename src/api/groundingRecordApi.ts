@@ -133,6 +133,47 @@ export async function getAIGroundingRecordsByConversationAndMessage(
   }
 }
 
+export async function getAIGroundingRecordsForMessage(
+  userId: string,
+  conversationId: string,
+  assistantMessageId: string,
+): Promise<AIGroundingRecord[]> {
+  try {
+    const conversation = await db.ai_conversations.get(conversationId);
+    if (!conversation || (conversation.userId ?? 'default_user') !== userId) return [];
+    return (await db.ai_grounding_records
+      .where('[conversationId+assistantMessageId]')
+      .equals([conversationId, assistantMessageId])
+      .sortBy('sentOrder'))
+      .filter((record) => record.userId === userId);
+  } catch (err) {
+    logger.error('Failed to fetch scoped AI grounding records', err);
+    throw new StorageError('getAIGroundingRecordsForMessage', err);
+  }
+}
+
+export async function resolveGroundingNavigation(
+  recordId: string,
+  userId: string,
+  database: AetherDatabase = db,
+): Promise<{ available: boolean; label: string }> {
+  try {
+    const record = await database.ai_grounding_records.get(recordId);
+    if (!record || record.userId !== userId) return { available: false, label: 'Source deleted' };
+    if (record.evidenceType === 'note') {
+      const note = record.noteId ? await database.notes.get(record.noteId) : undefined;
+      return note && (note.userId ?? 'default_user') === userId
+        ? { available: true, label: note.title || record.displayTitle }
+        : { available: false, label: 'Note deleted' };
+    }
+    const source = await resolveGroundingSourceNavigation(recordId, userId, database);
+    return { available: source.available, label: source.label };
+  } catch (err) {
+    logger.error('Failed to resolve grounding navigation', err);
+    throw new StorageError('resolveGroundingNavigation', err);
+  }
+}
+
 export async function getAIGroundingRecordsBySource(sourceId: string): Promise<AIGroundingRecord[]> {
   try {
     return await db.ai_grounding_records.where('sourceId').equals(sourceId).toArray();

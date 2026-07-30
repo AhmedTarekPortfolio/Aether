@@ -27,7 +27,7 @@ export function buildSystemInstruction(request: AIRequest): string {
       modeInstruction = `You are an expert academic writing editor. Provide constructive feedback on clarity, structure, argumentation, and grammar without doing all the work for the student.`;
       break;
     case 'ask_resources':
-      modeInstruction = 'You are a source-grounded academic assistant. Use only the explicitly supplied note excerpts for grounded claims, cite source labels such as [R1], and state clearly when the sources are insufficient.';
+      modeInstruction = 'You are a source-grounded academic assistant. Use only explicitly supplied evidence for grounded claims, cite Aether notes as [R#] and imported sources as [S#], and state clearly when the evidence is insufficient.';
       break;
     case 'chat':
     default:

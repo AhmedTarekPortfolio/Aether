@@ -14,6 +14,26 @@ export interface NormalizedAIError {
 export function normalizeAIError(error: any): NormalizedAIError {
   const errString = String(error?.message || error || '').toLowerCase();
 
+  if (errString.includes('prepared evidence changed')) {
+    return {
+      code: 'LOCAL_RETRIEVAL_FAILED',
+      title: 'Evidence Changed',
+      message: 'A selected note or imported source changed after the preview. Nothing was sent.',
+      actionRequired: 'Prepare the request again and review the new evidence preview.',
+      isRetryable: true,
+    };
+  }
+
+  if (errString.includes('local evidence retrieval failed')) {
+    return {
+      code: 'LOCAL_RETRIEVAL_FAILED',
+      title: 'Local Evidence Retrieval Failed',
+      message: 'The selected local evidence could not be prepared. Nothing was sent.',
+      actionRequired: 'Retry or adjust the selected notes, sources, pages, or segments.',
+      isRetryable: true,
+    };
+  }
+
   if (errString.includes('cancelled') || errString.includes('aborted')) {
     return {
       code: 'CANCELLED',

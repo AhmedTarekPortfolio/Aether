@@ -1,16 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AIInteraction, UserProfile, Subject, Task, AIProviderProfile, Note } from '../types';
+import {
+  AIGroundingRecord,
+  AIInteraction,
+  UserProfile,
+  Subject,
+  Task,
+  AIProviderProfile,
+  Note,
+} from '../types';
 import {
   getActiveProviderProfile,
   aiOrchestrator,
   PrivacyMode,
   PreparedAIRequest,
-  PreparedResourceExcerpt,
+  PreparedEvidenceExcerpt,
+  SourceEvidenceSelection,
   normalizeAIError,
 } from '../services/ai';
 import { ModelSettingsModal } from '../components/ai/ModelSettingsModal';
 import { PrivacyPreviewModal } from '../components/ai/PrivacyPreviewModal';
 import { ReasoningPanel } from '../components/ai/ReasoningPanel';
+import { SourceEvidenceSelector } from '../components/ai/SourceEvidenceSelector';
+import { GroundedResponse } from '../components/ai/Citation';
+import { SourceReader } from '../components/sources/SourceReader';
+import {
+  getSourceLibraryEntries,
+  type SourceLibraryEntry,
+} from '../services/sources';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -85,8 +101,11 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [privacyMode, setPrivacyMode] = useState<PrivacyMode>('standard');
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<SourceEvidenceSelection[]>([]);
   const [groundingState, setGroundingState] = useState<'idle' | 'loading' | 'no-evidence' | 'error'>('idle');
-  const [lastGroundedSources, setLastGroundedSources] = useState<PreparedResourceExcerpt[]>([]);
+  const [lastGroundedSources, setLastGroundedSources] = useState<PreparedEvidenceExcerpt[]>([]);
+  const [readerEntry, setReaderEntry] = useState<SourceLibraryEntry | null>(null);
+  const [readerInitialPage, setReaderInitialPage] = useState(1);
 
   // Active Provider Profile State
   const [activeProfile, setActiveProfile] = useState<AIProviderProfile>(getActiveProviderProfile());
@@ -132,6 +151,10 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       notes.some((note) => note.id === id && note.subjectId === selectedSubjectId)));
   }, [selectedSubjectId, notes]);
 
+  useEffect(() => {
+    setSelectedSources([]);
+  }, [selectedSubjectId]);
+
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
@@ -152,8 +175,11 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const handleSend = async (customPrompt?: string) => {
     const textToSend = (customPrompt || prompt).trim();
     if (!textToSend || ['preparing', 'saving_user', 'generating', 'saving_assistant'].includes(generationState)) return;
-    if (mode === 'ask_resources' && selectedNoteIds.length === 0) {
-      setProviderError({ title: 'Select at least one note', message: 'Ask Resources only sends notes you explicitly select.' });
+    if (mode === 'ask_resources' && selectedNoteIds.length === 0 && selectedSources.length === 0) {
+      setProviderError({
+        title: 'Select at least one resource',
+        message: 'Ask Resources only sends notes and imported sources you explicitly select.',
+      });
       return;
     }
 
@@ -176,7 +202,8 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
         taskId: selectedTaskId || undefined,
         privacyMode,
         conversationHistory: aiChats,
-        selectedResourceIds: mode === 'ask_resources' ? selectedNoteIds : undefined,
+        selectedNoteIds: mode === 'ask_resources' ? selectedNoteIds : undefined,
+        selectedSources: mode === 'ask_resources' ? selectedSources : undefined,
         signal: preparationController.signal,
       });
       preparationControllerRef.current = null;
@@ -258,6 +285,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       setStreamingText('');
       setStreamingReasoning('');
       setPendingPrompt('');
+      setPreparedRequest(null);
       activeRequestIdRef.current = null;
     } catch (err: any) {
       if (activeRequestIdRef.current === prepared.requestId) {
@@ -307,6 +335,29 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     navigator.clipboard.writeText(text);
     setCopiedMsgId(msgId);
     setTimeout(() => setCopiedMsgId(null), 2000);
+  };
+
+  const handleCitationNavigation = async (record: AIGroundingRecord) => {
+    if (record.evidenceType === 'note' && record.noteId) {
+      const note = notes.find((candidate) =>
+        candidate.id === record.noteId
+        && (candidate.userId ?? 'default_user') === (userProfile?.id || 'default_user'));
+      if (!note) return;
+      setMode('ask_resources');
+      setSelectedSubjectId(note.subjectId);
+      setSelectedNoteIds([note.id]);
+      return;
+    }
+    if (!record.sourceId) return;
+    const entries = (await Promise.all(
+      (['active', 'archived', 'trashed'] as const).map((status) =>
+        getSourceLibraryEntries(userProfile?.id || 'default_user', undefined, status)),
+    )).flat();
+    const entry = entries.find((candidate) => candidate.source.id === record.sourceId);
+    if (!entry) return;
+    const pageMatch = /Physical page (\d+)/i.exec(record.locatorSnapshot);
+    setReaderInitialPage(pageMatch ? Number(pageMatch[1]) : 1);
+    setReaderEntry(entry);
   };
 
   const sortedChats = sortMessagesChronologically(aiChats);
@@ -382,7 +433,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       {mode === 'ask_resources' && (
         <section aria-label="Ask Resources note selection" className="px-4 py-3 border-b border-[var(--border-glass)] bg-[var(--bg-secondary)]">
           <div className="max-w-3xl mx-auto space-y-3">
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid gap-3 lg:grid-cols-2">
               <label className="text-xs text-[var(--text-secondary)]">Subject
                 <select aria-label="Grounding subject" value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)} className="mt-1 w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-glass)] rounded-xl">
                   <option value="">Select subject</option>
@@ -402,13 +453,20 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                 </div>
               </div>
             </div>
+            <SourceEvidenceSelector
+              userId={userProfile?.id || 'default_user'}
+              subjectId={selectedSubjectId}
+              value={selectedSources}
+              onChange={setSelectedSources}
+              disabled={isGenerating}
+            />
             {selectedNoteIds.length > 0 && <div className="flex flex-wrap gap-1">{selectedNoteIds.map((id) => {
               const note = notes.find((candidate) => candidate.id === id);
               return note ? <button type="button" key={id} onClick={() => setSelectedNoteIds((ids) => ids.filter((value) => value !== id))} className="px-2 py-1 rounded-full bg-[var(--accent-purple)]/10 text-[var(--accent-purple)] text-[11px]">{note.title} ×</button> : null;
             })}</div>}
-            {groundingState === 'loading' && <p role="status" className="text-xs">Searching selected notes…</p>}
-            {groundingState === 'no-evidence' && <p role="status" className="text-xs text-[var(--accent-amber)]">The selected notes do not contain enough evidence for that question.</p>}
-            {groundingState === 'error' && <div role="alert" className="text-xs text-[var(--accent-rose)]">Note retrieval failed. Your notes were not sent. You can retry.</div>}
+            {groundingState === 'loading' && <p role="status" className="text-xs">Searching selected evidence locally…</p>}
+            {groundingState === 'no-evidence' && <p role="status" className="text-xs text-[var(--accent-amber)]">The selected resources do not contain enough evidence for that question.</p>}
+            {groundingState === 'error' && <div role="alert" className="text-xs text-[var(--accent-rose)]">Local evidence retrieval failed. Nothing was sent. You can retry.</div>}
           </div>
         </section>
       )}
@@ -465,7 +523,13 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
 
                 {/* Main Content */}
                 <div className="text-xs text-[var(--text-primary)] leading-relaxed font-sans whitespace-pre-wrap">
-                  {chat.response}
+                  <GroundedResponse
+                    text={chat.response || chat.content || ''}
+                    userId={userProfile?.id || 'default_user'}
+                    conversationId={chat.id}
+                    assistantMessageId={chat.id}
+                    onNavigate={(record) => void handleCitationNavigation(record)}
+                  />
                 </div>
 
                 {/* Message Footer Controls */}
@@ -520,12 +584,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
         {lastGroundedSources.length > 0 && (
           <div className="max-w-3xl mx-auto grid sm:grid-cols-2 gap-2" aria-label="Grounded answer sources">
             {lastGroundedSources.map((source) => (
-              <button key={source.noteId} type="button" onClick={() => {
-                setMode('ask_resources');
-                setSelectedSubjectId(source.subjectId);
-                setSelectedNoteIds([source.noteId]);
+              <button key={`${source.evidenceType}-${source.id}`} type="button" onClick={() => {
+                if (source.evidenceType === 'note' && source.noteId) {
+                  setMode('ask_resources');
+                  setSelectedSubjectId(source.subjectId);
+                  setSelectedNoteIds([source.noteId]);
+                }
               }} className="text-left p-3 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-secondary)]">
-                <span className="font-bold text-[var(--accent-purple)]">[{source.sourceId}]</span> <span className="text-xs">{source.title}</span>
+                <span className="font-bold text-[var(--accent-purple)]">[{source.label}]</span> <span className="text-xs">{source.title}</span>
+                <span className="block text-[10px] text-[var(--text-muted)]">{source.locator}</span>
                 <p className="text-[10px] text-[var(--text-muted)] mt-1 line-clamp-2">{source.excerpt}</p>
               </button>
             ))}
@@ -607,8 +674,14 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
         }}
         onCancel={() => {
           setIsPreviewOpen(false);
+          setPreparedRequest(null);
           setGenerationState('idle');
         }}
+      />
+      <SourceReader
+        entry={readerEntry}
+        initialPage={readerInitialPage}
+        onClose={() => setReaderEntry(null)}
       />
 
       {/* Clear History Confirmation Modal */}

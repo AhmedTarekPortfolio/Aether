@@ -5,6 +5,11 @@ import type {
   SourceVersion,
   StudySource,
 } from '../../types';
+import type {
+  PreparedEvidenceExcerpt,
+  SourceEvidenceSelection,
+} from '../ai/types';
+import { sha256Text } from './textNormalisation';
 
 export const MAX_SOURCE_SEARCH_RESULTS = 25;
 export const MAX_SOURCE_SEARCH_CANDIDATE_CHUNKS = 5_000;
@@ -74,6 +79,196 @@ function scoreChunk(text: string, normalizedQuery: string, terms: string[]): {
   if (ordered && terms.length > 1) score += 8;
   score += Math.max(0, 5 - Math.floor(firstMatch / 100));
   return { score, firstMatch };
+}
+
+function scoreGroundingText(text: string, normalizedQuery: string, terms: string[]): {
+  score: number;
+  firstMatch: number;
+} {
+  const normalized = text.toLocaleLowerCase();
+  let score = normalized.includes(normalizedQuery) ? 20 : 0;
+  let firstMatch = normalized.length;
+  let matched = 0;
+  for (const term of terms) {
+    const count = occurrenceCount(normalized, term);
+    if (count === 0) continue;
+    matched += 1;
+    score += Math.min(count, 10) * 5;
+    firstMatch = Math.min(firstMatch, normalized.indexOf(term));
+  }
+  if (matched === 0) return { score: 0, firstMatch: -1 };
+  if (matched === terms.length && terms.length > 1) score += 8;
+  score += Math.max(0, 5 - Math.floor(firstMatch / 100));
+  return { score, firstMatch };
+}
+
+export interface SourceGroundingCandidate {
+  source: StudySource;
+  version: SourceVersion;
+  segment: SourceSegment;
+  excerpt: string;
+  score: number;
+  locator: string;
+  sourceOrder: number;
+}
+
+export interface SourceGroundingCandidateRequest {
+  userId: string;
+  subjectId: string;
+  query: string;
+  selections: SourceEvidenceSelection[];
+  maximumCandidateSegments: number;
+}
+
+function isSelectedSegment(
+  segment: SourceSegment,
+  selection: SourceEvidenceSelection,
+): boolean {
+  if (selection.segmentIds?.length && !selection.segmentIds.includes(segment.id)) return false;
+  if (selection.pageRanges?.length) {
+    if (segment.physicalPage === null) return false;
+    return selection.pageRanges.some(
+      (range) => segment.physicalPage! >= range.start && segment.physicalPage! <= range.end,
+    );
+  }
+  return true;
+}
+
+function groundingLocator(segment: SourceSegment): string {
+  if (segment.physicalPage !== null) {
+    return `Physical page ${segment.physicalPage}${
+      segment.printedPageLabel ? ` (printed label ${segment.printedPageLabel})` : ''
+    }`;
+  }
+  if (segment.lineStart !== null) {
+    return segment.lineEnd !== null && segment.lineEnd !== segment.lineStart
+      ? `Lines ${segment.lineStart}–${segment.lineEnd}`
+      : `Line ${segment.lineStart}`;
+  }
+  return segment.heading ? `Section: ${segment.heading}` : `Segment ${segment.ordinal}`;
+}
+
+export async function getSourceGroundingCandidates(
+  request: SourceGroundingCandidateRequest,
+  database: AetherDatabase = db,
+): Promise<SourceGroundingCandidate[]> {
+  const normalizedQuery = request.query.trim().toLocaleLowerCase();
+  const terms = queryTerms(request.query);
+  if (!request.subjectId || !normalizedQuery || terms.length === 0) return [];
+  const maximumCandidateSegments = Math.max(1, request.maximumCandidateSegments);
+  const associatedSourceIds = new Set(
+    (await database.source_associations
+      .where('[targetType+targetId]')
+      .equals(['subject', request.subjectId])
+      .toArray())
+      .filter((association) => association.userId === request.userId)
+      .map((association) => association.sourceId),
+  );
+
+  const candidates: SourceGroundingCandidate[] = [];
+  let candidateSegments = 0;
+  for (const [sourceOrder, selection] of request.selections.entries()) {
+    if (candidateSegments >= maximumCandidateSegments) break;
+    const source = await database.study_sources.get(selection.sourceId);
+    if (
+      !source
+      || source.userId !== request.userId
+      || source.status !== 'active'
+      || !source.currentVersionId
+      || !associatedSourceIds.has(source.id)
+      || !['txt', 'markdown', 'pdf', 'pasted-text'].includes(source.sourceType)
+    ) continue;
+    const version = await database.source_versions.get(source.currentVersionId);
+    if (
+      !version
+      || version.userId !== request.userId
+      || version.sourceId !== source.id
+      || !['ready', 'partially_ready'].includes(version.status)
+    ) continue;
+    const segments = (await database.source_segments
+      .where('sourceVersionId')
+      .equals(version.id)
+      .sortBy('ordinal'))
+      .filter((segment) =>
+        segment.userId === request.userId
+        && segment.sourceId === source.id
+        && isSelectedSegment(segment, selection));
+
+    for (const segment of segments) {
+      if (candidateSegments >= maximumCandidateSegments) break;
+      candidateSegments += 1;
+      const chunks = await database.source_chunks.where('segmentId').equals(segment.id).toArray();
+      const texts = chunks.length > 0
+        ? chunks
+          .sort((left, right) => left.ordinal - right.ordinal || left.id.localeCompare(right.id))
+          .map((chunk) => chunk.text)
+        : [segment.text];
+      let best: { text: string; score: number; firstMatch: number } | null = null;
+      for (const text of texts) {
+        const scored = scoreGroundingText(text, normalizedQuery, terms);
+        if (
+          scored.score > 0
+          && (!best || scored.score > best.score
+            || (scored.score === best.score && text.localeCompare(best.text) < 0))
+        ) {
+          best = { text, ...scored };
+        }
+      }
+      if (!best) continue;
+      candidates.push({
+        source,
+        version,
+        segment,
+        excerpt: excerptFor(best.text, best.firstMatch),
+        score: best.score,
+        locator: groundingLocator(segment),
+        sourceOrder,
+      });
+    }
+  }
+
+  return candidates.sort((left, right) =>
+    right.score - left.score
+    || left.sourceOrder - right.sourceOrder
+    || left.segment.ordinal - right.segment.ordinal
+    || left.segment.id.localeCompare(right.segment.id));
+}
+
+export async function validateSourceGroundingEvidence(
+  evidence: PreparedEvidenceExcerpt[],
+  userId: string,
+  subjectId: string,
+  database: AetherDatabase = db,
+): Promise<boolean> {
+  for (const item of evidence) {
+    if (
+      item.evidenceType !== 'source_segment'
+      || !item.importedSourceId
+      || !item.sourceVersionId
+      || !item.segmentId
+    ) return false;
+    const [source, version, segment, association] = await Promise.all([
+      database.study_sources.get(item.importedSourceId),
+      database.source_versions.get(item.sourceVersionId),
+      database.source_segments.get(item.segmentId),
+      database.source_associations
+        .where('[sourceId+targetType+targetId]')
+        .equals([item.importedSourceId, 'subject', subjectId])
+        .first(),
+    ]);
+    if (
+      !source || source.userId !== userId || source.status !== 'active'
+      || source.currentVersionId !== item.sourceVersionId
+      || !version || version.userId !== userId || version.sourceId !== source.id
+      || !['ready', 'partially_ready'].includes(version.status)
+      || !segment || segment.userId !== userId || segment.sourceId !== source.id
+      || segment.sourceVersionId !== version.id
+      || segment.textHash !== item.contentHash
+      || await sha256Text(segment.text) !== item.contentHash
+      || !association || association.userId !== userId
+    ) return false;
+  }
+  return true;
 }
 
 function excerptFor(text: string, match: number): string {

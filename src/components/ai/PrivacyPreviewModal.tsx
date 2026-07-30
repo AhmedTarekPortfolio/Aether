@@ -27,7 +27,7 @@ export const PrivacyPreviewModal: React.FC<PrivacyPreviewModalProps> = ({
         <div className="p-3 rounded-xl bg-[var(--accent-amber)]/10 border border-[var(--accent-amber)]/30 text-[var(--accent-amber)] flex items-start gap-2.5">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
-            <div className="font-bold">Ask Before Sending</div>
+            <div className="font-bold">Explicit confirmation required</div>
             <div className="text-[11px] leading-relaxed mt-0.5">
               Review the outgoing payload details below before sending data to the external AI provider. No network request has been executed yet.
             </div>
@@ -75,7 +75,11 @@ export const PrivacyPreviewModal: React.FC<PrivacyPreviewModalProps> = ({
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {preview.attachedResources.map((res) => (
                 <div key={res.id} className="p-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-glass)] text-[11px]">
-                  <div><span className="font-bold text-[var(--accent-purple)]">[{res.sourceId}]</span> {res.title}</div>
+                  <div>
+                    <span className="font-bold text-[var(--accent-purple)]">[{res.label}]</span>{' '}
+                    {res.title}
+                  </div>
+                  <div className="text-[10px] text-[var(--text-muted)]">{res.locator}</div>
                   <pre className="mt-1 whitespace-pre-wrap font-sans text-[10px] text-[var(--text-secondary)]">{res.excerpt}</pre>
                 </div>
               ))}

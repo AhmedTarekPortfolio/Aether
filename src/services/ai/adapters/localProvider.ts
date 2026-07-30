@@ -26,20 +26,42 @@ export class LocalTemplateAdapter implements AIProviderAdapter {
     let explanation: { confidence: number; factors: string[] } | undefined;
 
     if (mode === 'ask_resources') {
-      const sourceBlock = request.normalizedRequest?.systemInstruction?.match(
+      const systemInstruction = request.normalizedRequest?.systemInstruction ?? '';
+      const evidenceBlock = systemInstruction.match(
+        /BEGIN UNTRUSTED EVIDENCE\n([\s\S]*?)\nEND UNTRUSTED EVIDENCE/,
+      )?.[1] ?? '';
+      const evidence = [...evidenceBlock.matchAll(
+        /EVIDENCE \[((?:R|S)\d+)\]\nType: ([^\n]+)\nTitle: ([^\n]+)\nLocator: ([^\n]+)\nExcerpt:\n([\s\S]*?)\nEND EVIDENCE \[\1\]/g,
+      )].map((match) => ({
+        label: match[1],
+        type: match[2],
+        title: match[3],
+        locator: match[4],
+        excerpt: match[5].trim(),
+      }));
+      const legacySourceBlock = systemInstruction.match(
         /BEGIN UNTRUSTED NOTE SOURCES\n([\s\S]*?)\nEND UNTRUSTED NOTE SOURCES/,
       )?.[1] ?? '';
-      const sources = [...sourceBlock.matchAll(
+      const legacyEvidence = [...legacySourceBlock.matchAll(
         /SOURCE \[(R\d+)\]\nTitle: ([^\n]+)\nNote ID: [^\n]+\n([\s\S]*?)\nEND SOURCE \[\1\]/g,
-      )].map((match) => ({ label: match[1], title: match[2], excerpt: match[3].trim() }));
+      )].map((match) => ({
+        label: match[1],
+        type: 'Aether note',
+        title: match[2],
+        locator: 'Note',
+        excerpt: match[3].trim(),
+      }));
+      const sources = evidence.length > 0 ? evidence : legacyEvidence;
       content = sources.length
-        ? `### Grounded answer\n\nThe selected notes provide the following relevant evidence:\n\n${
-          sources.map((source) => `- **[${source.label}] ${source.title}:** ${source.excerpt}`).join('\n\n')
-        }\n\nAll claims above are limited to the selected note excerpts.`
+        ? `### Grounded answer\n\nThe selected evidence provides the following relevant information:\n\n${
+          sources.map((source) =>
+            `- **[${source.label}] ${source.title} (${source.locator}):** ${source.excerpt}`)
+            .join('\n\n')
+        }\n\nAll claims above are limited to the exact selected evidence excerpts.`
         : 'The selected resources do not contain enough information to answer this question.';
       explanation = {
         confidence: sources.length ? 0.8 : 0,
-        factors: ['Synthesized locally from explicitly selected note excerpts only.'],
+        factors: ['Synthesized locally from explicitly selected evidence excerpts only.'],
       };
     } else if (mode === 'quiz') {
       const template = AI_TEMPLATES.quiz;

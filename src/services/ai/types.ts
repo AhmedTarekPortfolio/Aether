@@ -62,19 +62,43 @@ export interface NormalizedAIResponse {
   metadata?: Record<string, unknown>;
 }
 
-export interface PreparedResourceExcerpt {
+export interface EvidencePageRange {
+  start: number;
+  end: number;
+}
+
+export interface SourceEvidenceSelection {
+  sourceId: string;
+  pageRanges?: EvidencePageRange[];
+  segmentIds?: string[];
+}
+
+export interface PreparedEvidenceExcerpt {
   id: string;
-  noteId: string;
+  evidenceType: 'note' | 'source_segment';
+  label: string;
+  noteId: string | null;
+  importedSourceId: string | null;
+  sourceVersionId: string | null;
+  segmentId: string | null;
   subjectId: string;
-  sourceId: string; // e.g. "R1"
   title: string;
+  locator: string;
   excerpt: string;
+  excerptHash: string;
+  contentHash: string;
+  sourceType?: 'txt' | 'markdown' | 'pdf' | 'pasted-text';
+  physicalPage?: number | null;
+  printedPageLabel?: string | null;
   score: number;
   order: number;
 }
 
+/** @deprecated Use PreparedEvidenceExcerpt. */
+export type PreparedResourceExcerpt = PreparedEvidenceExcerpt;
+
 export type RetrievalOutcome =
-  | { status: 'success'; excerpts: PreparedResourceExcerpt[] }
+  | { status: 'success'; excerpts: PreparedEvidenceExcerpt[] }
   | { status: 'no-evidence'; excerpts: [] }
   | { status: 'cancelled'; excerpts: [] }
   | { status: 'error'; excerpts: []; error: unknown };
@@ -85,7 +109,7 @@ export interface RequestPreviewMetadata {
   modelId: string;
   mode: AIConversation['mode'];
   historyMessageCount: number;
-  attachedResources: PreparedResourceExcerpt[];
+  attachedResources: PreparedEvidenceExcerpt[];
   estimatedInputChars: number;
   privacyMode: PrivacyMode;
 }
@@ -97,7 +121,8 @@ export interface PrepareAIInput {
   profileId?: string;
   subjectId?: string | null;
   taskId?: string | null;
-  selectedResourceIds?: string[];
+  selectedNoteIds?: string[];
+  selectedSources?: SourceEvidenceSelection[];
   privacyMode?: PrivacyMode;
   conversationHistory?: AIConversation[];
   signal?: AbortSignal;

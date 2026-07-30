@@ -47,7 +47,7 @@ describe('WP-02 Ask Resources UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ask Resources/i }));
     fireEvent.change(screen.getByPlaceholderText(/Ask Aether AI/), { target: { value: 'Question' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByText('Select at least one note')).toBeInTheDocument();
+    expect(await screen.findByText('Select at least one resource')).toBeInTheDocument();
     expect(prepare).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Cells' }));
@@ -69,7 +69,13 @@ describe('WP-02 Ask Resources UI', () => {
       preview: {
         providerId: 'p1', providerName: 'Remote', modelId: 'm1', mode: 'ask_resources',
         historyMessageCount: 0, estimatedInputChars: 99, privacyMode: 'ask_before_sending',
-        attachedResources: [{ id: 'n1', noteId: 'n1', subjectId: 's1', sourceId: 'R1', title: 'Cells', excerpt: 'Exact truncated excerpt', score: 6, order: 1 }],
+        attachedResources: [{
+          id: 'n1', evidenceType: 'note', label: 'R1', noteId: 'n1',
+          importedSourceId: null, sourceVersionId: null, segmentId: null,
+          subjectId: 's1', title: 'Cells', locator: 'Note',
+          excerpt: 'Exact truncated excerpt', excerptHash: 'a'.repeat(64),
+          contentHash: 'b'.repeat(64), score: 6, order: 1,
+        }],
       },
       requiresConfirmation: true,
     };

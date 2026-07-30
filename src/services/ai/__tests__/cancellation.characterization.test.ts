@@ -47,7 +47,7 @@ describe('Phase 0 Production Cancellation Characterization Tests', () => {
       prompt: 'Test cancellation prompt',
       mode: 'tutor',
       userId: 'u1',
-      selectedResourceIds: [],
+      selectedNoteIds: [],
     });
 
     if (prepared.type !== 'prepared_request') {

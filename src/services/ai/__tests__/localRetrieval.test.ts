@@ -51,7 +51,7 @@ describe('WP-02 deterministic local note retrieval', () => {
     ]);
     const result = await performLocalRetrieval('orbit', { ...options, selectedNoteIds: ['content', 'tag', 'title'] });
     expect(result.excerpts.map((excerpt) => excerpt.noteId)).toEqual(['title', 'tag', 'content']);
-    expect(result.excerpts.map((excerpt) => excerpt.sourceId)).toEqual(['R1', 'R2', 'R3']);
+    expect(result.excerpts.map((excerpt) => excerpt.label)).toEqual(['R1', 'R2', 'R3']);
   });
 
   it('extracts a matching window rather than the leading characters', async () => {

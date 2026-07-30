@@ -21,4 +21,13 @@ describe('AI Error Taxonomy (FocusForge Architecture - src/services/ai/errorTaxo
     expect(err.code).toBe('CANCELLED');
     expect(err.title).toBe('Request Cancelled');
   });
+
+  it('requires a fresh preview when prepared evidence changes', () => {
+    const err = normalizeAIError(
+      new Error('Prepared evidence changed before sending. Prepare the request again.'),
+    );
+    expect(err.code).toBe('LOCAL_RETRIEVAL_FAILED');
+    expect(err.title).toBe('Evidence Changed');
+    expect(err.message).toContain('Nothing was sent');
+  });
 });
