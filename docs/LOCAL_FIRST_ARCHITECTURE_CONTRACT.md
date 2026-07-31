@@ -23,23 +23,31 @@ This document is the authoritative architecture contract for Aether's local-firs
 - **Electron upgrade gate** (WP-LOCAL-08A) mandatory before browser implementation — current Electron 32 is EOL and unsupported for production browser workloads
 - **Supabase freeze** — all cloud, auth, sync, and remote-identity work deferred until local desktop functionality is complete and independently verified
 
-The contract is organised into 24 sections. The final verdict is:
+The contract is organised into 24 sections and is amended by
+`WP_LOCAL_08B_BROWSER_SEQUENCING_AMENDMENT.md`. The current sequencing verdict
+is:
 
 ```
-READY FOR WP-LOCAL-01 AFTER CONTRACT APPROVAL
+WP-LOCAL-08A MAY BEGIN ONLY AFTER WP-LOCAL-08B IS ACCEPTED AND PUBLISHED
 ```
 
-The next executable work package is **WP-LOCAL-01 — Minimal source domain contracts**.
+The next executable work package after WP-LOCAL-08B is **WP-LOCAL-08A —
+Supported Electron Upgrade and Regression Verification**. Image import and OCR
+are deferred until after WP-LOCAL-10.
 
 ---
 
 ## 2. Final Verdict
 
 ```
-READY FOR WP-LOCAL-01 AFTER CONTRACT APPROVAL
+WP-LOCAL-08A MAY BEGIN ONLY AFTER WP-LOCAL-08B IS ACCEPTED AND PUBLISHED
 ```
 
-All mandatory architecture corrections from the WP-LOCAL-00 directive have been incorporated into this contract. The repository baseline commit is unchanged. The working tree contains exactly one authorised untracked documentation file: `docs/LOCAL_FIRST_ARCHITECTURE_CONTRACT.md`. No production code changes, package installations, or migrations have been performed. The next step is user approval of the contract decisions documented herein, after which **WP-LOCAL-01 — Minimal source domain contracts** may begin.
+All mandatory architecture corrections from WP-LOCAL-00 remain in force.
+WP-LOCAL-08B changes sequencing only: it moves the supported Electron upgrade
+and reviewed browser work before image import and OCR. No production code,
+package installation, migration, or target Electron selection is authorised by
+the amendment.
 
 ---
 
@@ -669,6 +677,10 @@ interface SourceSegmentInput {
 
 ## 11. Image and OCR Contract
 
+**Sequencing amendment**: WP-LOCAL-08 image import and OCR are deferred until
+after WP-LOCAL-10. They are not prerequisites for WP-LOCAL-08A or WP-LOCAL-09.
+All requirements in this section remain mandatory when WP-LOCAL-08 begins.
+
 ### 11.1 Scope
 
 - Import image files (PNG, JPEG, WebP, TIFF, BMP)
@@ -894,10 +906,13 @@ The system prompt must include:
 
 ### 14.3 Page Capture
 
+- Page capture is implemented only in WP-LOCAL-10, after WP-LOCAL-09 passes its
+  independent browser security review.
 - Trusted shell button "Save page as source" → Main captures via `webContents.printToPDF()` or `capturePage()`
 - Requires explicit user confirmation dialog per capture
 - Creates `browser-capture` source type
 - Remote page **never** invokes import IPC directly
+- No automatic page capture
 
 ### 14.4 Security Invariants
 
@@ -1084,23 +1099,41 @@ Do not require a test case that violates the declared contract.
 
 ### 16.2 Upgrade Work Package (WP-LOCAL-08A)
 
-Before WP-LOCAL-09 begins, a dedicated work package must:
+WP-LOCAL-08A depends on accepted and published WP-LOCAL-08B. OCR and
+image-processing production code and dependencies must remain absent. This is
+a compatibility and security upgrade, not a feature package. Before
+WP-LOCAL-09 begins, WP-LOCAL-08A must:
 
-1. **Target selection**: At execution time, identify a currently supported Electron stable line using official Electron release and support documentation. Record the exact selected version, release date, support status, breaking changes, native-module compatibility, and security rationale in the WP-LOCAL-08A report. Do not preselect a target in WP-LOCAL-00.
-2. **Dependency audit**: Update all Electron-dependent packages (`electron-builder`, `@electron/remote` if used, native modules)
-3. **Renderer build**: `npm run build` PASS
-4. **Electron build**: `npm run build:electron` PASS
-5. **Packaged Windows installer**: `npm run package:win` (or equivalent) produces working `.exe` / `.msi`
-6. **Preload parity**: `preload.ts` and `preload.cjs` identical exports; contextBridge types match
-7. **IPC contracts**: All 16 existing channels + new `aether:sources:*` / `aether:browser:*` channels functional
-8. **Navigation policy**: `navigation-policy.ts` unchanged behaviour
-9. **AI credential storage**: `credential-service.ts` read/write functional in packaged app
-10. **Backup/restore**: V2 backup create + restore verified in packaged app
-11. **Test baseline**: 545 existing tests PASS + new regression tests for upgrade
+1. **Target selection**: At execution time, identify a currently supported Electron stable line using official Electron release and support documentation. Record the exact selected version, release date, support status, rationale, and relevant breaking changes from Electron 32. Do not preselect a target in WP-LOCAL-08B.
+2. **Bounded dependency audit**: Upgrade only Electron and directly required compatible tooling; inspect removed/deprecated APIs and native-module compatibility.
+3. **Architecture preservation**: Preserve business logic, renderer/Main ownership, all existing typed IPC, and preload parity.
+4. **PDF preservation**: Preserve PDF `utilityProcess` extraction and the opaque PDF asset protocol.
+5. **Source preservation**: Preserve source import, lifecycle operations, source-grounded AI, and citations.
+6. **Security preservation**: Preserve security preferences, sandbox behaviour, context isolation, AI transport, and credential storage.
+7. **Backup preservation**: Preserve and verify Backup Version 2.
+8. **Regression tests**: Establish the passing baseline for all currently implemented functionality and add focused Electron-upgrade regression tests.
+9. **Build and package**: Rebuild and package successfully.
+10. **Packaged runtime**: Launch the packaged Windows application using an isolated profile and verify all existing core flows, including startup and restart persistence.
+11. **Supported browser primitive**: Verify supported `WebContentsView` behaviour in the packaged Windows application without implementing browser features.
+12. **Stop boundary**: Stop before implementing browser code.
 
-### 16.3 Blocking Condition
+### 16.3 Independent Upgrade Review
 
-WP-LOCAL-09 **cannot start** until WP-LOCAL-08A completes with all verifications PASS.
+A separate reviewer must independently inspect the selected Electron support
+status; dependency and lockfile changes; removed or deprecated APIs; security
+preferences; sandbox behaviour; context isolation; preload parity; IPC;
+`utilityProcess`; PDF parsing and viewing; managed storage; AI transport and
+credential storage; Backup Version 2; packaged runtime; and startup/restart
+persistence.
+
+The upgrade commit must not be used as the base for WP-LOCAL-09 until the
+review passes and every required correction is published.
+
+### 16.4 Blocking Condition
+
+WP-LOCAL-09 **cannot start** until WP-LOCAL-08A completes with all
+verifications passing, its independent review passes, and the accepted upgrade
+and any correction are published.
 
 ---
 
@@ -1399,33 +1432,30 @@ Do not silently change Backup V2 compatibility merely because Dexie gains additi
 
 ---
 
-### WP-LOCAL-08 — Image Import and Isolated OCR
-- **Objective**: Image import + utilityProcess decode/OCR + segment creation
-- **Scope**: Import pipeline, OCR job, segment bounding boxes
-- **Preconditions**: WP-LOCAL-07 complete
-- **Files likely to change**:
-  - `electron/services/sources/image-processor.ts` (utilityProcess decode + OCR)
-  - `src/components/sources/ImageViewer.tsx` (with overlay for OCR regions)
-  - `src/views/SourceDetailView.tsx` (image tab)
-- **Files that must not change**: AI, browser, backup
-- **Dependency changes**: `tesseract.js` (utilityProcess), `sharp` (utilityProcess decode)
+### WP-LOCAL-08B — Browser Sequencing Amendment
+- **Objective**: Permit the supported Electron upgrade and restricted-browser work before image import and OCR
+- **Scope**: Documentation only
+- **Preconditions**: WP-LOCAL-05 implemented, independently reviewed, corrected, and published; repository clean and synchronised
+- **Files likely to change**: `docs/WP_LOCAL_08B_BROWSER_SEQUENCING_AMENDMENT.md`, this contract
+- **Files that must not change**: Production code, tests, package metadata, lockfiles
+- **Dependency changes**: None
 - **Database changes**: None
-- **Backup impact**: Image assets + OCR segments durable
-- **Security impact**: Dimension limits; decompression bomb protection in utilityProcess
-- **Automated tests**: Import PNG/JPEG/TIFF → OCR segments; bounding boxes accurate
-- **Manual verification**: Photo of textbook page → OCR → AI question cites `[S1]`
-- **Packaged-runtime verification**: Packaged app image OCR
-- **Acceptance criteria**: Image import + OCR functional; regions selectable for AI
-- **Stop conditions**: OCR accuracy < 80% on test corpus; utilityProcess crash on large TIFF
-- **Commit boundary**: Single commit "WP-LOCAL-08: Image import + OCR"
-- **Required final report**: OCR accuracy benchmarks + security review
+- **Backup impact**: None; Backup V2 and V3 contracts unchanged
+- **Security impact**: Preserves the supported-Electron and independent-review gates before browser work
+- **Automated tests**: None
+- **Manual verification**: Documentation consistency and diff checks
+- **Packaged-runtime verification**: N/A
+- **Acceptance criteria**: Sequencing amendment accepted and published
+- **Stop conditions**: Conflicting authority, weakened isolation, production changes, or unrelated changes
+- **Commit boundary**: Single commit "docs: prioritise restricted browser before OCR"
+- **Required final report**: Sequencing, dependency, documentation, commit, and publication evidence
 
 ---
 
-### WP-LOCAL-08A — Electron Upgrade and Regression Verification
-- **Objective**: Upgrade Electron to supported version; full regression verification
-- **Scope**: Dependency upgrades, build config, packaged app verification
-- **Preconditions**: WP-LOCAL-08 complete (all parser/OCR deps validated on new Electron)
+### WP-LOCAL-08A — Supported Electron Upgrade and Regression Verification
+- **Objective**: Upgrade Electron to a supported stable release line; complete compatibility, security, and regression verification
+- **Scope**: Electron and directly required compatible tooling, API adapters, build configuration, focused regressions, packaged-app verification
+- **Preconditions**: WP-LOCAL-08B accepted and published; currently implemented functionality has an established passing baseline; OCR/image-processing production code and dependencies remain absent
 - **Files likely to change**:
   - `package.json` (electron version, electron-builder, native deps)
   - `electron/main.ts` (API changes)
@@ -1433,24 +1463,25 @@ Do not silently change Backup V2 compatibility merely because Dexie gains additi
   - `vite.config.ts` (if Electron version affects)
   - `tsconfig.electron.json`
 - **Files that must not change**: Business logic (AI, sources, backup) — only Electron API adapters
-- **Dependency changes**: Electron major upgrade; all native modules rebuilt
+- **Dependency changes**: Electron and only directly required compatible tooling; all native modules rebuilt
 - **Database changes**: None
-- **Backup impact**: V2/V3 restore verified on new Electron
+- **Backup impact**: Backup V2 create/restore preserved and verified
 - **Security impact**: Updated Chromium/V8; security patches
-- **Automated tests**: Full 545-test suite + new regression tests (min 20)
-- **Manual verification**: All manual flows (import, AI, backup, browser stub)
+- **Automated tests**: Full established suite + focused upgrade regression tests
+- **Manual verification**: All currently implemented core flows, supported `WebContentsView` primitive only, startup and restart persistence
 - **Packaged-runtime verification**: Windows installer produced; installs/runs on clean VM
 - **Acceptance criteria**: All verifications PASS (Section 16.2)
 - **Stop conditions**: Any verification FAIL
 - **Commit boundary**: Single commit "WP-LOCAL-08A: Electron upgrade to vXX"
 - **Required final report**: Upgrade changelog + regression test matrix
+- **Independent review gate**: A separate reviewer must pass every check in Section 16.3; any correction must be published before WP-LOCAL-09
 
 ---
 
 ### WP-LOCAL-09 — Trusted-Shell Restricted Educational Browser
 - **Objective**: Implement dedicated browser window with WebContentsView + allowlist
-- **Scope**: Browser window, shell UI, navigation policy, page capture
-- **Preconditions**: WP-LOCAL-08A complete (supported Electron)
+- **Scope**: Browser window, trusted shell UI, isolated remote view, navigation policy, session and cleanup controls; no page capture
+- **Preconditions**: WP-LOCAL-08A and its independent review pass; accepted upgrade and corrections published; supported packaged `WebContentsView` behaviour verified
 - **Files likely to change**:
   - `electron/services/browser/browser-window.ts` (new)
   - `electron/services/browser/navigation-policy.ts` (extend)
@@ -1464,20 +1495,21 @@ Do not silently change Backup V2 compatibility merely because Dexie gains additi
 - **Database changes**: None (allowlist in `settings` table)
 - **Backup impact**: Allowlist backed up via settings
 - **Security impact**: WebContentsView isolation; partition `persist:aether-education-browser`; permission denial
-- **Automated tests**: Navigation allow/block; redirect revalidation; capture → source
-- **Manual verification**: Browse allowlisted site → capture page → appears in sources
+- **Automated tests**: Navigation allow/block; redirect revalidation; popup/permission/download denial; session isolation and cleanup
+- **Manual verification**: Browse allowlisted site; block disallowed schemes and redirect escapes; verify system-browser fallback
 - **Packaged-runtime verification**: Packaged app browser window functional
-- **Acceptance criteria**: Browser isolates remote content; allowlist enforced; capture works
+- **Acceptance criteria**: Browser isolates remote content; allowlist enforced; no preload, bridge, Node.js, direct import IPC, Dexie access, credential sharing, or automatic capture
 - **Stop conditions**: WebContentsView crash; navigation policy bypass; CSP violation
 - **Commit boundary**: Single commit "WP-LOCAL-09: Restricted educational browser"
 - **Required final report**: Security penetration test summary
+- **Independent review gate**: Before WP-LOCAL-10, a separate browser security review must pass the navigation, scheme, redirect, popup, permission, download, isolation, IPC, cleanup, crash-containment, and packaged-runtime checks in WP-LOCAL-08B
 
 ---
 
 ### WP-LOCAL-10 — Confirmed Browser Content Capture
 - **Objective**: Polish capture flow (confirmation dialog, metadata, capture options)
 - **Scope**: Capture UX, metadata enrichment (title, URL, timestamp)
-- **Preconditions**: WP-LOCAL-09 complete
+- **Preconditions**: WP-LOCAL-09 passes independent browser security review and every required correction is published
 - **Files likely to change**:
   - `src/components/browser/CaptureDialog.tsx`
   - `electron/services/browser/page-capture.ts`
@@ -1496,10 +1528,34 @@ Do not silently change Backup V2 compatibility merely because Dexie gains additi
 
 ---
 
+### WP-LOCAL-08 — Image Import and Isolated OCR (Deferred)
+- **Objective**: Image import + utilityProcess decode/OCR + segment creation
+- **Scope**: Import pipeline, OCR job, segment bounding boxes
+- **Preconditions**: WP-LOCAL-09 and WP-LOCAL-10 accepted; OCR parser and image-decode dependencies evaluated on the upgraded Electron runtime
+- **Files likely to change**:
+  - `electron/services/sources/image-processor.ts` (utilityProcess decode + OCR)
+  - `src/components/sources/ImageViewer.tsx` (with overlay for OCR regions)
+  - `src/views/SourceDetailView.tsx` (image tab)
+- **Files that must not change**: AI, browser, backup
+- **Dependency changes**: `tesseract.js` (utilityProcess), `sharp` (utilityProcess decode), selected only after evaluation on the upgraded runtime
+- **Database changes**: None
+- **Backup impact**: Image assets + OCR segments durable
+- **Security impact**: No Dexie, credentials, or browser cookies in parser; typed bounded jobs; dimension and decoded-pixel limits; decompression-bomb defence; timeout, cancellation, and crash containment
+- **Automated tests**: Import PNG/JPEG/TIFF → OCR segments; bounding boxes accurate; parser limits and containment
+- **Manual verification**: Photo of textbook page → OCR → AI question cites `[S1]`; Arabic and mixed-text accuracy evaluated
+- **Packaged-runtime verification**: Packaged app image OCR on the upgraded Electron runtime
+- **Acceptance criteria**: Image import + OCR functional; regions selectable for AI; isolation and accuracy gates pass
+- **Stop conditions**: OCR accuracy below the accepted corpus threshold; parser isolation or crash containment failure
+- **Commit boundary**: Single commit "WP-LOCAL-08: Image import + OCR"
+- **Required final report**: OCR accuracy benchmarks + security review
+- **Independent review gate**: A separate review and any required published correction must complete before WP-LOCAL-11
+
+---
+
 ### WP-LOCAL-11 — Full-Workspace Backup Version 3
 - **Objective**: Implement Backup V3 (ZIP) + restore + safety backup rule enforcement
 - **Scope**: Backup service, ZIP library, staged restore, V3 manifest
-- **Preconditions**: WP-LOCAL-10 complete (all durable tables exist)
+- **Preconditions**: Deferred WP-LOCAL-08 and its independent review complete; all durable source types then implemented, including browser captures and image/OCR sources, are in scope
 - **Files likely to change**:
   - `src/services/backupService.ts` (V3 export/import)
   - `src/services/backup/zip-archive.ts` (new, ZIP creation/parsing)
@@ -1516,7 +1572,7 @@ Do not silently change Backup V2 compatibility merely because Dexie gains additi
 - **Automated tests**: V3 export/import round-trip; hash mismatch rejection; missing asset rejection; safety rule enforcement; historical pointer tolerance
 - **Manual verification**: Export 5GB workspace → import on clean machine → identical
 - **Packaged-runtime verification**: Packaged app backup/restore
-- **Acceptance criteria**: V3 backup/restore functional; safety rule enforced; all limits enforced; integrates with existing restore marker
+- **Acceptance criteria**: V3 backup/restore functional for the full workspace and every durable source type; safety rule enforced; all limits enforced; integrates with existing restore marker
 - **Stop conditions**: Restore data corruption; zip-slip vulnerability; performance < 50MB/s
 - **Commit boundary**: Single commit "WP-LOCAL-11: Backup Version 3"
 - **Required final report**: Backup/restore performance + security audit
@@ -1568,16 +1624,16 @@ Do not silently change Backup V2 compatibility merely because Dexie gains additi
 
 ## 20. Testing Matrix
 
-| Layer | WP-LOCAL-01 | WP-LOCAL-02 | WP-LOCAL-03 | WP-LOCAL-04 | WP-LOCAL-05 | WP-LOCAL-06 | WP-LOCAL-07 | WP-LOCAL-08 | WP-LOCAL-08A | WP-LOCAL-09 | WP-LOCAL-10 | WP-LOCAL-11 | WP-LOCAL-12 | WP-LOCAL-13 |
-|-------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|--------------|-------------|-------------|-------------|-------------|-------------|
-| Unit (Vitest) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-| Integration (Main+Renderer) | | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | | ✓ | ✓ | ✓ | ✓ | |
-| UtilityProcess isolation | | | | | | ✓ | ✓ | ✓ | ✓ | | | | ✓ | |
-| Packaged app (Windows) | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Backup/restore round-trip | | | | | | | | | | | | ✓ | ✓ | ✓ |
-| Security (penetration) | | | | | | | | | | ✓ | | ✓ | ✓ | |
-| Performance benchmarks | | | | | | ✓ | ✓ | ✓ | | | | | ✓ | |
-| Independent verification | | | | | | | | | | | | | | ✓ |
+| Layer | WP-LOCAL-01 | WP-LOCAL-02 | WP-LOCAL-03 | WP-LOCAL-04 | WP-LOCAL-05 | WP-LOCAL-06 | WP-LOCAL-07 | WP-LOCAL-08B | WP-LOCAL-08A | WP-LOCAL-09 | WP-LOCAL-10 | WP-LOCAL-08 | WP-LOCAL-11 | WP-LOCAL-12 | WP-LOCAL-13 |
+|-------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|--------------|--------------|-------------|-------------|-------------|-------------|-------------|-------------|
+| Unit (Vitest) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| Integration (Main+Renderer) | | ✓ | ✓ | ✓ | ✓ | | ✓ | | | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| UtilityProcess isolation | | | | | | ✓ | ✓ | | ✓ | | | ✓ | | ✓ | |
+| Packaged app (Windows) | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Backup/restore round-trip | | | | | | | | | ✓ | | | | ✓ | ✓ | ✓ |
+| Security (penetration) | | | | | | | | | ✓ | ✓ | | ✓ | ✓ | ✓ | |
+| Performance benchmarks | | | | | | ✓ | ✓ | | | | | ✓ | | ✓ | |
+| Independent verification | | | | | | | | | ✓ | ✓ | | ✓ | | | ✓ |
 
 **Baseline**: 545 tests must pass at every WP boundary. New tests added per WP must pass before commit.
 
@@ -1630,17 +1686,18 @@ No cloud dependencies, environment variables, outbox tables, remote identifiers,
 
 ## 23. Exact Next Executable Work Package
 
-**WP-LOCAL-01 — Minimal source domain contracts**
+**WP-LOCAL-08A — Supported Electron Upgrade and Regression Verification**
 
-- Add Schema Version 4 migration (8 tables) to `src/db/database.ts`
-- Add TypeScript interfaces to `src/types/sources.ts` and `src/types/index.ts`
-- Add repository modules: `src/api/sourceApi.ts`, `sourceAssetApi.ts`, `sourceVersionApi.ts`, `sourceSegmentApi.ts`, `sourceAssociationApi.ts`, `sourceJobApi.ts`, `sourceChunkApi.ts`, `groundingRecordApi.ts`
-- Export from `src/api/index.ts`
-- Decouple `CURRENT_DEXIE_SCHEMA_VERSION = 4` from `BACKUP_V2_DATABASE_SCHEMA_VERSION = 3` in `src/types/backup.ts`
-- **No behaviour change** — pure schema + types + stubs
-- **No V2 table expansion** — Backup V2 unchanged
-- Single commit boundary
-- Required: `npm run build`, `npm run build:electron`, `npx vitest run` all PASS
+- Begins only after WP-LOCAL-08B is accepted and published.
+- Selects a supported stable Electron line at execution time from current
+  official Electron release and support documentation.
+- Preserves all currently implemented functionality and Backup Version 2.
+- Includes focused regression, build, packaging, isolated-profile packaged
+  runtime, and restart-persistence verification.
+- Stops before browser implementation.
+- Requires a separate independent review and publication of any correction
+  before WP-LOCAL-09 begins.
+- Image import and OCR remain deferred until after WP-LOCAL-10.
 
 ---
 
